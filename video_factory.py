@@ -1,63 +1,197 @@
 import subprocess
 from pathlib import Path
 import urllib.request
+import urllib.parse
+import json
 import random
+import re
+import time
 
 OUT = Path("output")
-OUT.mkdir(exist_ok=True)
+IMG = OUT / "images"
 
-TOPICS = [
-    "كيف سيغير الذكاء الاصطناعي حياتنا خلال السنوات القادمة؟",
-    "7 وظائف قد يغيرها الذكاء الاصطناعي بشكل جذري",
-    "لماذا يفشل بعض الناس رغم أنهم يعملون بجد؟",
-    "كيف تتحكم الشركات الكبرى في قرارات المستهلكين؟",
-    "أغرب 10 حقائق عن العقل البشري",
-    "ماذا يحدث لعقلك عندما تستخدم هاتفك لساعات طويلة؟",
-    "كيف يمكن لقرار واحد أن يكلف شركة ملايين الدولارات؟",
-    "5 تقنيات ستغير حياتنا في المستقبل القريب",
-    "لماذا أصبح بعض الناس مدمنين على وسائل التواصل الاجتماعي؟",
-    "أسرار نفسية تجعلك تتخذ قرارات دون أن تشعر",
-    "كيف يفكر الأثرياء بطريقة مختلفة؟",
-    "ماذا سيحدث إذا أصبح الذكاء الاصطناعي أفضل من البشر في معظم الأعمال؟"
+OUT.mkdir(exist_ok=True)
+IMG.mkdir(exist_ok=True)
+
+# المجالات التي يراقبها ACURIVO يوميًا
+SEARCHES = [
+    "artificial intelligence future",
+    "AI tools productivity",
+    "business secrets",
+    "psychology facts",
+    "money business",
+    "technology future",
+    "science facts",
+    "human behavior",
+    "success habits",
+    "future technology"
 ]
 
-topic = random.choice(TOPICS)
 
-SCRIPT = f"""
-هل تخيلت يومًا أن قرارًا واحدًا يمكن أن يغير حياتك بالكامل؟
+def run(cmd):
+    print("RUN:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
 
-موضوعنا اليوم هو:
+
+def discover_videos():
+    print("================================")
+    print("ACURIVO TOPIC SCOUT")
+    print("================================")
+
+    results = []
+
+    for query in SEARCHES:
+
+        print("SEARCH:", query)
+
+        try:
+            command = [
+                "python",
+                "-m",
+                "yt_dlp",
+                "--flat-playlist",
+                "--dump-single-json",
+                "--playlist-end",
+                "10",
+                "ytsearch10:" + query
+            ]
+
+            output = subprocess.check_output(
+                command,
+                text=True,
+                stderr=subprocess.DEVNULL
+            )
+
+            data = json.loads(output)
+
+            for item in data.get("entries", []):
+
+                if not item:
+                    continue
+
+                title = item.get("title", "")
+                views = item.get("view_count") or 0
+
+                if not title:
+                    continue
+
+                results.append({
+                    "title": title,
+                    "views": int(views),
+                    "query": query
+                })
+
+        except Exception as e:
+            print("SEARCH ERROR:", e)
+
+    if not results:
+        raise RuntimeError("لم يتم العثور على نتائج YouTube.")
+
+    # ترتيب حسب المشاهدات
+    results.sort(
+        key=lambda x: x["views"],
+        reverse=True
+    )
+
+    return results
+
+
+def clean_title(title):
+
+    title = re.sub(
+        r"\[[^\]]*\]",
+        "",
+        title
+    )
+
+    title = re.sub(
+        r"\([^)]*\)",
+        "",
+        title
+    )
+
+    return title.strip()
+
+
+def choose_topic(results):
+
+    # نأخذ أفضل 20 نتيجة
+    candidates = results[:20]
+
+    # اختيار من أعلى النتائج مع تنويع بسيط
+    top = candidates[:8]
+
+    selected = random.choice(top)
+
+    topic = clean_title(
+        selected["title"]
+    )
+
+    print("================================")
+    print("SELECTED TOPIC")
+    print(topic)
+    print("VIEWS:", selected["views"])
+    print("SOURCE SEARCH:", selected["query"])
+    print("================================")
+
+    return topic, selected
+
+
+def build_script(topic):
+
+    return f"""
+تخيل أن هناك فكرة واحدة فقط يمكن أن تغير
+طريقة نظرتك إلى العالم.
+
+موضوع اليوم هو:
 
 {topic}
 
-في السنوات الأخيرة تغير العالم بسرعة مذهلة.
-تقنيات جديدة تظهر، وأساليب العمل تتغير،
-والطريقة التي نتخذ بها قراراتنا لم تعد كما كانت.
+لكن القصة الحقيقية ليست في العنوان فقط.
 
-لكن السؤال الحقيقي ليس فقط ماذا يحدث؟
+خلال السنوات الأخيرة ظهرت تغيرات كبيرة
+في طريقة تفكير الناس وعمل الشركات
+واتخاذ القرارات.
 
-السؤال هو:
-لماذا يحدث ذلك؟
-وكيف سيؤثر علينا؟
+والأمر المثير للاهتمام أن بعض هذه التغيرات
+بدأت تظهر أمامنا بالفعل.
 
-هناك أسباب كثيرة وراء هذه التحولات،
-وبعضها قد يكون أقرب إلينا مما نتوقع.
+في هذا الفيديو سنفهم الفكرة بطريقة بسيطة،
+وسنستعرض أهم الأسباب والنتائج،
+ثم نصل إلى السؤال الأهم:
 
-ولهذا سنستعرض في هذا الفيديو أهم الأفكار والحقائق
-المرتبطة بهذا الموضوع،
-ونحاول أن نفهم الصورة بطريقة بسيطة وممتعة.
+ماذا يعني هذا بالنسبة لنا في المستقبل؟
 
-وفي النهاية قد تكتشف أن الشيء الذي يبدو عاديًا اليوم
-يمكن أن يصبح أحد أكبر التحولات في المستقبل.
+السبب الأول هو أن العالم يتغير بسرعة أكبر
+من قدرتنا أحيانًا على ملاحظة ذلك.
 
-إذا أعجبك الموضوع، اشترك في القناة
-وفعّل التنبيهات لمشاهدة المزيد من القصص والأفكار.
+والسبب الثاني أن التقنية والمعلومات
+أصبحت قادرة على تغيير سلوك ملايين الأشخاص
+في وقت قصير جدًا.
+
+أما السبب الثالث،
+فهو أن الأشياء التي تبدو صغيرة اليوم
+قد تتحول إلى اتجاهات ضخمة غدًا.
+
+ولهذا فإن فهم هذه التحولات مبكرًا
+قد يكون أهم بكثير من انتظار حدوثها.
+
+والأهم من كل ذلك:
+
+لا تحاول فقط أن تعرف ماذا يحدث.
+
+حاول أن تفهم لماذا يحدث،
+وإلى أين يمكن أن يقودنا.
+
+إذا أعجبك هذا النوع من المحتوى،
+اشترك في القناة،
+لأننا كل يوم نكتشف فكرة جديدة
+قد تغير طريقة رؤيتك للعالم.
 """
 
-def run(cmd):
-    subprocess.run(cmd, check=True)
 
-def make_voice():
+def make_voice(script):
+
     audio = OUT / "voice.mp3"
 
     run([
@@ -66,43 +200,129 @@ def make_voice():
         "edge_tts",
         "--voice",
         "ar-SA-HamedNeural",
-        "--rate=+5%",
+        "--rate=+3%",
         "--text",
-        SCRIPT,
+        script,
         "--write-media",
         str(audio)
     ])
 
     return audio
 
-def make_background():
-    image = OUT / "background.jpg"
 
-    url = (
-        "https://picsum.photos/1920/1080"
-        "?random=" + str(random.randint(1, 100000))
+def make_ai_image(prompt, index):
+
+    filename = IMG / f"scene_{index}.jpg"
+
+    encoded = urllib.parse.quote(
+        prompt,
+        safe=""
     )
 
-    urllib.request.urlretrieve(url, image)
+    url = (
+        "https://image.pollinations.ai/prompt/"
+        + encoded
+        + "?width=1920&height=1080&nologo=true"
+    )
 
-    return image
+    try:
+        urllib.request.urlretrieve(
+            url,
+            filename
+        )
 
-def make_video(image, audio):
+        return filename
+
+    except Exception as e:
+
+        print(
+            "IMAGE ERROR:",
+            e
+        )
+
+        return None
+
+
+def make_scenes(topic):
+
+    prompts = [
+        f"cinematic documentary scene about {topic}, futuristic world, dramatic lighting, ultra realistic, 16:9",
+        f"professional documentary visualization of {topic}, modern technology, cinematic photography, 16:9",
+        f"people experiencing the impact of {topic}, realistic cinematic scene, dramatic atmosphere, 16:9",
+        f"future world related to {topic}, advanced technology, spectacular cinematic environment, 16:9",
+        f"conceptual visualization of {topic}, premium documentary style, realistic, cinematic, 16:9"
+    ]
+
+    images = []
+
+    for i, prompt in enumerate(prompts, 1):
+
+        print(
+            f"GENERATING SCENE {i}/5"
+        )
+
+        image = make_ai_image(
+            prompt,
+            i
+        )
+
+        if image:
+            images.append(image)
+
+        time.sleep(2)
+
+    if not images:
+        raise RuntimeError(
+            "لم يتم إنشاء أي مشهد."
+        )
+
+    return images
+
+
+def make_video(images, audio):
+
     video = OUT / "ACURIVO_VIDEO.mp4"
+
+    # إنشاء ملف concat
+    concat = OUT / "images.txt"
+
+    duration = 8
+
+    with open(
+        concat,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        for image in images:
+
+            f.write(
+                f"file '{image.resolve()}'\n"
+            )
+
+            f.write(
+                f"duration {duration}\n"
+            )
+
+        f.write(
+            f"file '{images[-1].resolve()}'\n"
+        )
 
     run([
         "ffmpeg",
         "-y",
-        "-loop",
-        "1",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
         "-i",
-        str(image),
+        str(concat),
         "-i",
         str(audio),
         "-vf",
         "scale=1920:1080,"
-        "zoompan=z='min(zoom+0.0005,1.08)':"
-        "d=1:s=1920x1080:fps=30",
+        "zoompan=z='min(zoom+0.0004,1.08)':"
+        "d=240:s=1920x1080:fps=30",
         "-c:v",
         "libx264",
         "-preset",
@@ -119,22 +339,65 @@ def make_video(image, audio):
 
     return video
 
+
+def save_report(topic, source):
+
+    report = OUT / "topic_report.txt"
+
+    report.write_text(
+        "ACURIVO DAILY TOPIC\n\n"
+        f"TOPIC: {topic}\n"
+        f"SOURCE SEARCH: {source['query']}\n"
+        f"SOURCE VIEWS: {source['views']}\n",
+        encoding="utf-8"
+    )
+
+
 def main():
-    print("================================")
-    print("ACURIVO VIRAL TOPIC FACTORY")
-    print("================================")
 
-    print("SELECTED TOPIC:")
-    print(topic)
+    print("")
+    print("======================================")
+    print("       ACURIVO DAILY AI FACTORY")
+    print("======================================")
 
-    audio = make_voice()
-    image = make_background()
-    video = make_video(image, audio)
+    results = discover_videos()
 
-    print("================================")
-    print("VIDEO CREATED")
-    print(video)
-    print("================================")
+    topic, source = choose_topic(
+        results
+    )
+
+    save_report(
+        topic,
+        source
+    )
+
+    script = build_script(
+        topic
+    )
+
+    print("SCRIPT CREATED")
+
+    audio = make_voice(
+        script
+    )
+
+    images = make_scenes(
+        topic
+    )
+
+    video = make_video(
+        images,
+        audio
+    )
+
+    print("")
+    print("======================================")
+    print("        ACURIVO VIDEO CREATED")
+    print("======================================")
+    print("TOPIC:", topic)
+    print("VIDEO:", video)
+    print("======================================")
+
 
 if __name__ == "__main__":
     main()
