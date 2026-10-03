@@ -26,7 +26,7 @@ jobs:
 
       - name: Install AI tools
         run: |
-          pip install edge-tts requests pillow
+          pip install edge-tts requests pillow yt-dlp
 
       - name: ACURIVO Topic Scout
         run: |
