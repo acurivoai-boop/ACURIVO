@@ -11,8 +11,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Run ACURIVO Video Factory
-        run: python3 video_factory.py
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install edge-tts
+
+      - name: Create ACURIVO video
+        run: |
+          python video_factory.py
+
+      - name: Upload MP4
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACURIVO-VIDEO
+          path: output/ACURIVO_VIDEO.mp4
