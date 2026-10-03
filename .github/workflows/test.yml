@@ -30,3 +30,7 @@ jobs:
         with:
           name: ACURIVO-VIDEO
           path: output/ACURIVO_VIDEO.mp4
+      - name: Setup Python        with:
+
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: pip install edge-tts        run: python3 video_factory.py
