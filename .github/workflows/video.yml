@@ -1,3 +1,0 @@
-name: ACURIVO Video Factory
-on: {workflow_dispatch: null}
-jobs: {build: {runs-on: ubuntu-latest, steps: [{run: echo "ACURIVO WORKFLOW OK"}]}}
