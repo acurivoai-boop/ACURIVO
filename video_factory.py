@@ -1,8 +1,5 @@
-
-import os
 import subprocess
 from pathlib import Path
-import urllib.parse
 import urllib.request
 
 OUT = Path("output")
@@ -27,14 +24,10 @@ SCRIPT = """
 """
 
 def run(cmd):
-    print("RUN:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
 def make_voice():
-    text_file = OUT / "script.txt"
-    audio_file = OUT / "voice.mp3"
-
-    text_file.write_text(SCRIPT, encoding="utf-8")
+    audio = OUT / "voice.mp3"
 
     run([
         "python",
@@ -46,20 +39,18 @@ def make_voice():
         "--text",
         SCRIPT,
         "--write-media",
-        str(audio_file)
+        str(audio)
     ])
 
-    return audio_file
+    return audio
 
 def make_background():
     image = OUT / "background.jpg"
 
-    url = (
-        "https://picsum.photos/1920/1080"
-        "?random=acurivo"
+    urllib.request.urlretrieve(
+        "https://picsum.photos/1920/1080?random=acurivo",
+        image
     )
-
-    urllib.request.urlretrieve(url, image)
 
     return image
 
@@ -96,18 +87,13 @@ def make_video(image, audio):
     return video
 
 def main():
-    print("================================")
-    print("ACURIVO VIDEO FACTORY")
-    print("================================")
+    print("ACURIVO VIDEO FACTORY START")
 
     audio = make_voice()
     image = make_background()
     video = make_video(image, audio)
 
-    print("================================")
-    print("VIDEO CREATED")
-    print(video)
-    print("================================")
+    print("VIDEO CREATED:", video)
 
 if __name__ == "__main__":
     main()
