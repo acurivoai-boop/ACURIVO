@@ -1,26 +1,40 @@
-name: ACURIVO Video Factory
+name: ACURIVO Daily AI Video
 
 on:
+  schedule:
+    - cron: '0 10 * * *'
+      timezone: "Asia/Riyadh"
   workflow_dispatch:
 
 jobs:
-  build:
+  daily-video:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
 
-      - run: pip install edge-tts
+      - name: Install AI tools
+        run: |
+          pip install edge-tts requests pillow
 
-      - run: python3 video_factory.py
+      - name: ACURIVO Topic Scout
+        run: |
+          python3 video_factory.py
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload completed video
+        uses: actions/upload-artifact@v4
         with:
-          name: ACURIVO-VIDEO
+          name: ACURIVO-DAILY-VIDEO
           path: output/ACURIVO_VIDEO.mp4
+          retention-days: 7
