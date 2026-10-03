@@ -6,31 +6,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: Install Edge TTS
-        run: pip install edge-tts
+      - run: pip install edge-tts
 
-      - name: Build video
-        run: python3 video_factory.py
+      - run: python3 video_factory.py
 
-      - name: Upload video
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: ACURIVO-VIDEO
           path: output/ACURIVO_VIDEO.mp4
-      - name: Setup Python        with:
-
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-        run: pip install edge-tts        run: python3 video_factory.py
