@@ -1,0 +1,20 @@
+name: ACURIVO Video Factory
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install edge-tts
+      - run: python3 video_factory.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ACURIVO-VIDEO
+          path: output/ACURIVO_VIDEO.mp4
