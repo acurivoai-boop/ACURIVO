@@ -6,6 +6,7 @@ import json
 import random
 import re
 import time
+import shutil
 
 OUT = Path("output")
 IMG = OUT / "images"
@@ -13,35 +14,34 @@ IMG = OUT / "images"
 OUT.mkdir(exist_ok=True)
 IMG.mkdir(exist_ok=True)
 
-# المجالات التي يراقبها ACURIVO يوميًا
+# المجالات التي يراقبها المصنع
 SEARCHES = [
-    "artificial intelligence future",
-    "AI tools productivity",
-    "business secrets",
-    "psychology facts",
-    "money business",
-    "technology future",
-    "science facts",
+    "AI technology",
+    "future technology",
+    "business",
+    "money",
+    "psychology",
+    "science",
+    "space",
+    "health science",
     "human behavior",
-    "success habits",
-    "future technology"
+    "productivity",
+    "innovation",
+    "future",
 ]
-
 
 def run(cmd):
     print("RUN:", " ".join(cmd))
     subprocess.run(cmd, check=True)
 
-
 def discover_videos():
-    print("================================")
+    print("=" * 50)
     print("ACURIVO TOPIC SCOUT")
-    print("================================")
+    print("=" * 50)
 
     results = []
 
     for query in SEARCHES:
-
         print("SEARCH:", query)
 
         try:
@@ -65,19 +65,18 @@ def discover_videos():
             data = json.loads(output)
 
             for item in data.get("entries", []):
-
                 if not item:
                     continue
 
                 title = item.get("title", "")
-                views = item.get("view_count") or 0
+                video_id = item.get("id", "")
 
                 if not title:
                     continue
 
                 results.append({
                     "title": title,
-                    "views": int(views),
+                    "id": video_id,
                     "query": query
                 })
 
@@ -87,111 +86,146 @@ def discover_videos():
     if not results:
         raise RuntimeError("لم يتم العثور على نتائج YouTube.")
 
-    # ترتيب حسب المشاهدات
-    results.sort(
-        key=lambda x: x["views"],
-        reverse=True
-    )
+    # إزالة العناوين المتكررة
+    unique = {}
+    for item in results:
+        key = re.sub(r"\s+", " ", item["title"].lower()).strip()
+        unique[key] = item
+
+    results = list(unique.values())
+
+    print("FOUND:", len(results), "VIDEOS")
 
     return results
 
 
 def clean_title(title):
+    title = re.sub(r"\[[^\]]*\]", "", title)
+    title = re.sub(r"\([^)]*\)", "", title)
+    title = re.sub(r"#\w+", "", title)
+    title = re.sub(r"\s+", " ", title)
 
-    title = re.sub(
-        r"\[[^\]]*\]",
-        "",
-        title
-    )
-
-    title = re.sub(
-        r"\([^)]*\)",
-        "",
-        title
-    )
-
-    return title.strip()
+    return title.strip(" -|")
 
 
 def choose_topic(results):
+    # نأخذ مجموعة من النتائج القوية ونختار منها عشوائيًا
+    # حتى لا ينتج المصنع نفس الموضوع كل يوم.
+    candidates = results[:30]
 
-    # نأخذ أفضل 20 نتيجة
-    candidates = results[:20]
+    selected = random.choice(candidates)
 
-    # اختيار من أعلى النتائج مع تنويع بسيط
-    top = candidates[:8]
+    topic = clean_title(selected["title"])
 
-    selected = random.choice(top)
-
-    topic = clean_title(
-        selected["title"]
-    )
-
-    print("================================")
+    print("=" * 50)
     print("SELECTED TOPIC")
     print(topic)
-    print("VIEWS:", selected["views"])
     print("SOURCE SEARCH:", selected["query"])
-    print("================================")
+    print("=" * 50)
 
     return topic, selected
 
 
 def build_script(topic):
+    # سيناريو جديد في كل تشغيل.
+    # لا ينسخ الفيديو المصدر ولا يعتمد على نصه.
 
-    return f"""
-تخيل أن هناك فكرة واحدة فقط يمكن أن تغير
-طريقة نظرتك إلى العالم.
+    openings = [
+        f"هناك شيء غريب يحدث الآن حول {topic}...",
+        f"قد يبدو {topic} مجرد موضوع عادي، لكن الحقيقة مختلفة تمامًا.",
+        f"خلال الفترة الأخيرة بدأ {topic} يجذب اهتمامًا كبيرًا حول العالم.",
+        f"تخيل أن ما تعرفه عن {topic} قد يتغير خلال السنوات القادمة.",
+        f"لماذا أصبح {topic} موضوعًا يستحق كل هذا الاهتمام؟"
+    ]
 
-موضوع اليوم هو:
+    angles = [
+        "التأثير الحقيقي على حياتنا اليومية",
+        "السبب الذي يقف خلف هذا التحول",
+        "ما الذي قد يحدث خلال السنوات القادمة",
+        "الجانب الذي لا يتحدث عنه الناس كثيرًا",
+        "كيف يمكن أن يغير هذا الموضوع طريقة عمل العالم"
+    ]
+
+    opening = random.choice(openings)
+    angle = random.choice(angles)
+
+    script = f"""
+{opening}
+
+موضوعنا اليوم هو:
 
 {topic}
 
-لكن القصة الحقيقية ليست في العنوان فقط.
+لكننا لن نكتفي بتعريف الموضوع.
 
-خلال السنوات الأخيرة ظهرت تغيرات كبيرة
-في طريقة تفكير الناس وعمل الشركات
-واتخاذ القرارات.
+سننظر إلى {angle}.
 
-والأمر المثير للاهتمام أن بعض هذه التغيرات
-بدأت تظهر أمامنا بالفعل.
+في البداية، يجب أن نفهم لماذا أصبح هذا الموضوع
+مهمًا في هذا الوقت تحديدًا.
 
-في هذا الفيديو سنفهم الفكرة بطريقة بسيطة،
-وسنستعرض أهم الأسباب والنتائج،
-ثم نصل إلى السؤال الأهم:
+العالم يتغير بسرعة.
+والتقنية والمعلومات والاقتصاد وسلوك الإنسان
+أصبحت مترابطة أكثر من أي وقت مضى.
 
-ماذا يعني هذا بالنسبة لنا في المستقبل؟
+ولهذا فإن بعض الأفكار التي تبدو صغيرة اليوم
+يمكن أن تتحول إلى تغييرات كبيرة جدًا غدًا.
 
-السبب الأول هو أن العالم يتغير بسرعة أكبر
-من قدرتنا أحيانًا على ملاحظة ذلك.
+في حالة {topic}،
+هناك عدة عوامل تستحق الانتباه.
 
-والسبب الثاني أن التقنية والمعلومات
-أصبحت قادرة على تغيير سلوك ملايين الأشخاص
-في وقت قصير جدًا.
+العامل الأول هو سرعة التطور.
 
-أما السبب الثالث،
-فهو أن الأشياء التي تبدو صغيرة اليوم
-قد تتحول إلى اتجاهات ضخمة غدًا.
+العامل الثاني هو حجم التأثير المحتمل
+على الأفراد والشركات والمجتمع.
 
-ولهذا فإن فهم هذه التحولات مبكرًا
-قد يكون أهم بكثير من انتظار حدوثها.
+أما العامل الثالث،
+فهو أن النتائج قد لا تكون واضحة بالكامل الآن.
 
-والأهم من كل ذلك:
+وهنا تصبح الصورة أكثر إثارة.
 
-لا تحاول فقط أن تعرف ماذا يحدث.
+فبدلًا من السؤال:
+ماذا يحدث؟
 
-حاول أن تفهم لماذا يحدث،
-وإلى أين يمكن أن يقودنا.
+السؤال الأهم هو:
 
-إذا أعجبك هذا النوع من المحتوى،
-اشترك في القناة،
-لأننا كل يوم نكتشف فكرة جديدة
-قد تغير طريقة رؤيتك للعالم.
+إلى أين يمكن أن يقودنا هذا الاتجاه؟
+
+إذا استمر التطور بنفس السرعة،
+فقد نشهد تغيرات كبيرة في طريقة
+عمل الناس وتعلمهم واتخاذهم للقرارات.
+
+لكن هناك نقطة مهمة.
+
+لا يعني انتشار فكرة ما أنها ستنجح بالضرورة.
+
+التغيير الحقيقي يحتاج إلى وقت،
+وتجربة،
+ودليل واضح على القيمة.
+
+ولهذا من المهم ألا ننظر إلى المستقبل
+بخوف أو مبالغة.
+
+بل أن نفهم الاتجاه،
+ونراقب الأدلة،
+ونستعد للفرص والمخاطر.
+
+وفي النهاية،
+قد لا يكون السؤال الحقيقي هو:
+
+هل سيتغير العالم؟
+
+بل:
+
+هل سنكون مستعدين عندما يتغير؟
+
+تابع القناة للمزيد من القصص والأفكار
+التي تستحق أن تعرفها.
 """
+
+    return script.strip()
 
 
 def make_voice(script):
-
     audio = OUT / "voice.mp3"
 
     run([
@@ -211,13 +245,9 @@ def make_voice(script):
 
 
 def make_ai_image(prompt, index):
-
     filename = IMG / f"scene_{index}.jpg"
 
-    encoded = urllib.parse.quote(
-        prompt,
-        safe=""
-    )
+    encoded = urllib.parse.quote(prompt, safe="")
 
     url = (
         "https://image.pollinations.ai/prompt/"
@@ -226,40 +256,92 @@ def make_ai_image(prompt, index):
     )
 
     try:
-        urllib.request.urlretrieve(
-            url,
-            filename
-        )
+        urllib.request.urlretrieve(url, filename)
 
-        return filename
+        if filename.exists() and filename.stat().st_size > 1000:
+            return filename
 
     except Exception as e:
+        print("IMAGE ERROR:", e)
 
-        print(
-            "IMAGE ERROR:",
-            e
-        )
-
-        return None
+    return None
 
 
 def make_scenes(topic):
 
+    visual_styles = [
+        "cinematic documentary photography",
+        "ultra realistic cinematic scene",
+        "premium science documentary",
+        "futuristic editorial photography",
+        "dramatic realistic documentary"
+    ]
+
+    style = random.choice(visual_styles)
+
     prompts = [
-        f"cinematic documentary scene about {topic}, futuristic world, dramatic lighting, ultra realistic, 16:9",
-        f"professional documentary visualization of {topic}, modern technology, cinematic photography, 16:9",
-        f"people experiencing the impact of {topic}, realistic cinematic scene, dramatic atmosphere, 16:9",
-        f"future world related to {topic}, advanced technology, spectacular cinematic environment, 16:9",
-        f"conceptual visualization of {topic}, premium documentary style, realistic, cinematic, 16:9"
+        f"""
+        {style},
+        visual representation of {topic},
+        realistic environment,
+        dramatic natural lighting,
+        highly detailed,
+        professional documentary,
+        no text,
+        no logos,
+        16:9
+        """,
+
+        f"""
+        {style},
+        people interacting with a world affected by {topic},
+        realistic human expressions,
+        sophisticated composition,
+        cinematic lighting,
+        no text,
+        no logos,
+        16:9
+        """,
+
+        f"""
+        {style},
+        conceptual visualization of {topic},
+        advanced technology and modern environment,
+        realistic details,
+        visually spectacular,
+        no text,
+        no logos,
+        16:9
+        """,
+
+        f"""
+        {style},
+        future scenario related to {topic},
+        large-scale environment,
+        realistic cinematic atmosphere,
+        impressive composition,
+        no text,
+        no logos,
+        16:9
+        """,
+
+        f"""
+        {style},
+        close cinematic visualization related to {topic},
+        premium documentary quality,
+        realistic textures,
+        dramatic atmosphere,
+        no text,
+        no logos,
+        16:9
+        """
     ]
 
     images = []
 
     for i, prompt in enumerate(prompts, 1):
 
-        print(
-            f"GENERATING SCENE {i}/5"
-        )
+        print(f"GENERATING SCENE {i}/5")
 
         image = make_ai_image(
             prompt,
@@ -272,9 +354,7 @@ def make_scenes(topic):
         time.sleep(2)
 
     if not images:
-        raise RuntimeError(
-            "لم يتم إنشاء أي مشهد."
-        )
+        raise RuntimeError("لم يتم إنشاء أي مشاهد.")
 
     return images
 
@@ -282,10 +362,9 @@ def make_scenes(topic):
 def make_video(images, audio):
 
     video = OUT / "ACURIVO_VIDEO.mp4"
-
-    # إنشاء ملف concat
     concat = OUT / "images.txt"
 
+    # مدة المشهد الأساسية
     duration = 8
 
     with open(
@@ -304,6 +383,7 @@ def make_video(images, audio):
                 f"duration {duration}\n"
             )
 
+        # مطلوب لملف concat
         f.write(
             f"file '{images[-1].resolve()}'\n"
         )
@@ -320,9 +400,14 @@ def make_video(images, audio):
         "-i",
         str(audio),
         "-vf",
-        "scale=1920:1080,"
-        "zoompan=z='min(zoom+0.0004,1.08)':"
-        "d=240:s=1920x1080:fps=30",
+        (
+            "scale=1920:1080,"
+            "zoompan="
+            "z='min(zoom+0.0004,1.08)':"
+            "d=240:"
+            "s=1920x1080:"
+            "fps=30"
+        ),
         "-c:v",
         "libx264",
         "-preset",
@@ -348,55 +433,78 @@ def save_report(topic, source):
         "ACURIVO DAILY TOPIC\n\n"
         f"TOPIC: {topic}\n"
         f"SOURCE SEARCH: {source['query']}\n"
-        f"SOURCE VIEWS: {source['views']}\n",
+        f"SOURCE TITLE: {source['title']}\n"
+        f"VIDEO ID: {source.get('id', '')}\n",
         encoding="utf-8"
     )
+
+
+def clean_old_files():
+
+    if IMG.exists():
+
+        for file in IMG.iterdir():
+
+            if file.is_file():
+                try:
+                    file.unlink()
+                except Exception:
+                    pass
 
 
 def main():
 
     print("")
-    print("======================================")
-    print("       ACURIVO DAILY AI FACTORY")
-    print("======================================")
+    print("=" * 60)
+    print("          ACURIVO DAILY AI FACTORY")
+    print("=" * 60)
+    print("")
 
+    clean_old_files()
+
+    # 1 — اكتشاف مواضيع YouTube
     results = discover_videos()
 
-    topic, source = choose_topic(
-        results
-    )
+    # 2 — اختيار موضوع
+    topic, source = choose_topic(results)
 
     save_report(
         topic,
         source
     )
 
+    # 3 — إنشاء سيناريو أصلي
     script = build_script(
         topic
     )
 
-    print("SCRIPT CREATED")
+    print("")
+    print("ORIGINAL SCRIPT CREATED")
+    print("")
 
+    # 4 — تحويل النص إلى صوت
     audio = make_voice(
         script
     )
 
+    # 5 — إنشاء المشاهد
     images = make_scenes(
         topic
     )
 
+    # 6 — إنتاج الفيديو النهائي
     video = make_video(
         images,
         audio
     )
 
     print("")
-    print("======================================")
-    print("        ACURIVO VIDEO CREATED")
-    print("======================================")
+    print("=" * 60)
+    print("          ACURIVO VIDEO CREATED")
+    print("=" * 60)
     print("TOPIC:", topic)
     print("VIDEO:", video)
-    print("======================================")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
