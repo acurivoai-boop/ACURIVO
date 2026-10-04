@@ -1,38 +1,29 @@
 name: ACURIVO Daily AI Video
-
 on:
   schedule:
     - cron: '0 10 * * *'
   workflow_dispatch:
-
 jobs:
   daily-video:
     runs-on: ubuntu-latest
-
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-
       - name: Install AI tools
         run: |
           python -m pip install --upgrade pip
           pip install edge-tts requests pillow yt-dlp ddgs
-
       - name: Create AI Video
         run: |
           python3 video_factory.py
-
       - name: Check video
         run: |
           ls -lh output/ACURIVO_VIDEO.mp4
@@ -40,41 +31,75 @@ jobs:
             -show_entries format=duration,size \
             -of default=noprint_wrappers=1 \
             output/ACURIVO_VIDEO.mp4
-
-      - name: Send video to ACURIVO HUB
+      # ==========================================================
+      # PREPARE VIDEO FOR TRANSFER
+      # ==========================================================
+      - name: Prepare video
+        run: |
+          mkdir -p transfer
+          cp output/ACURIVO_VIDEO.mp4 \
+             transfer/ACURIVO_VIDEO.mp4
+          ls -lh transfer/ACURIVO_VIDEO.mp4
+      # ==========================================================
+      # UPLOAD VIDEO AS GITHUB ARTIFACT
+      # ==========================================================
+      - name: Save video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ACURIVO-DAILY-VIDEO
+          path: transfer/ACURIVO_VIDEO.mp4
+          retention-days: 1
+      # ==========================================================
+      # CREATE PUBLIC RELEASE AS TRANSFER CHANNEL
+      # ==========================================================
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="acurivo-video-${{ github.run_number }}"
+          echo "Creating release: $TAG"
+          gh release create "$TAG" \
+            transfer/ACURIVO_VIDEO.mp4 \
+            --title "ACURIVO VIDEO ${{ github.run_number }}" \
+            --notes "Automatic ACURIVO video transfer."
+          echo "RELEASE CREATED"
+      # ==========================================================
+      # GET RELEASE ASSET URL
+      # ==========================================================
+      - name: Get release asset URL
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="acurivo-video-${{ github.run_number }}"
+          URL=$(gh release view "$TAG" \
+            --json assets \
+            --jq '.assets[0].url')
+          echo "ASSET_URL=$URL"
+          echo "asset_url=$URL" >> "$GITHUB_OUTPUT"
+      # ==========================================================
+      # SEND ONLY THE URL TO ACURIVO HUB
+      # ==========================================================
+      - name: Send video URL to ACURIVO HUB
         env:
           ACURIVO_WEBAPP: "https://script.google.com/macros/s/AKfycbzM2XkoawYfFdz97y5mc3UYjj3Sn8Bha8sn8SLpV0TcSEU1_PKS5M3bokLJMCyfmU5j/exec"
+          VIDEO_URL: ${{ steps.release.outputs.asset_url }}
         run: |
           python3 - <<'PY'
-          import base64
           import json
           import os
           import urllib.request
-
-          video_path = "output/ACURIVO_VIDEO.mp4"
           endpoint = os.environ["ACURIVO_WEBAPP"]
-
-          with open(video_path, "rb") as f:
-              video_data = f.read()
-
-          size_mb = len(video_data) / 1024 / 1024
-
-          print(f"VIDEO SIZE: {size_mb:.2f} MB")
-
-          if size_mb > 45:
-              raise RuntimeError(
-                  f"Video is too large: {size_mb:.2f} MB"
-              )
-
-          encoded = base64.b64encode(video_data).decode("ascii")
-
+          video_url = os.environ["VIDEO_URL"]
           payload = {
+              "action": "download_and_upload",
               "filename": "ACURIVO_VIDEO.mp4",
-              "base64": encoded
+              "url": video_url
           }
-
           body = json.dumps(payload).encode("utf-8")
-
+          print("SENDING VIDEO URL TO ACURIVO HUB...")
+          print("URL:")
+          print(video_url)
           request = urllib.request.Request(
               endpoint,
               data=body,
@@ -83,31 +108,36 @@ jobs:
               },
               method="POST"
           )
-
-          print("SENDING VIDEO TO ACURIVO HUB...")
-
           with urllib.request.urlopen(
               request,
               timeout=300
           ) as response:
-
               result = response.read().decode("utf-8")
-
               print("ACURIVO HUB RESPONSE:")
               print(result)
-
               if '"success":true' not in result.replace(" ", ""):
                   raise RuntimeError(
                       "ACURIVO HUB did not confirm successful upload."
                   )
-
-          print("YOUTUBE UPLOAD CONFIRMED.")
-
+          print("ACURIVO VIDEO TRANSFER CONFIRMED.")
           PY
-
-      - name: Save completed video
-        uses: actions/upload-artifact@v4
-        with:
-          name: ACURIVO-DAILY-VIDEO
-          path: output/ACURIVO_VIDEO.mp4
-          retention-days: 7
+      # ==========================================================
+      # CLEAN OLD RELEASES
+      # ==========================================================
+      - name: Cleanup old ACURIVO releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Cleaning old ACURIVO releases..."
+          gh release list \
+            --limit 20 \
+            --json tagName \
+            --jq '.[].tagName' |
+          grep '^acurivo-video-' |
+          head -n -3 |
+          while read TAG
+          do
+            echo "Deleting $TAG"
+            gh release delete "$TAG" --yes --cleanup-tag
+          done || true
+          echo "CLEANUP COMPLETE"
