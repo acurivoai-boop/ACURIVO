@@ -26,7 +26,8 @@ jobs:
 
       - name: Install AI tools
         run: |
-          pip install edge-tts requests pillow yt-dlp
+          python -m pip install --upgrade pip
+          pip install edge-tts requests pillow yt-dlp ddgs
 
       - name: Create AI Video
         run: |
@@ -35,9 +36,10 @@ jobs:
       - name: Check video
         run: |
           ls -lh output/ACURIVO_VIDEO.mp4
-          ffprobe -v error -show_entries format=duration,size \
-          -of default=noprint_wrappers=1 \
-          output/ACURIVO_VIDEO.mp4
+          ffprobe -v error \
+            -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 \
+            output/ACURIVO_VIDEO.mp4
 
       - name: Send video to ACURIVO HUB
         env:
@@ -56,6 +58,7 @@ jobs:
               video_data = f.read()
 
           size_mb = len(video_data) / 1024 / 1024
+
           print(f"VIDEO SIZE: {size_mb:.2f} MB")
 
           if size_mb > 45:
@@ -63,14 +66,18 @@ jobs:
                   f"Video is too large: {size_mb:.2f} MB"
               )
 
+          encoded = base64.b64encode(video_data).decode("ascii")
+
           payload = {
               "filename": "ACURIVO_VIDEO.mp4",
-              "base64": base64.b64encode(video_data).decode("ascii")
+              "base64": encoded
           }
+
+          body = json.dumps(payload).encode("utf-8")
 
           request = urllib.request.Request(
               endpoint,
-              data=json.dumps(payload).encode("utf-8"),
+              data=body,
               headers={
                   "Content-Type": "application/json"
               },
