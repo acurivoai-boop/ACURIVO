@@ -809,10 +809,6 @@ def search_scene_images(
 
     selected = []
 
-    # --------------------------------------------------------
-    # Exact searches
-    # --------------------------------------------------------
-
     for query in queries:
 
         if len(selected) >= wanted:
@@ -822,12 +818,6 @@ def search_scene_images(
             query,
             18,
         )
-
-        # ====================================================
-        # FIX V11.2
-        # DDGS may return width/height as strings.
-        # Convert them safely before multiplication.
-        # ====================================================
 
         results.sort(
             key=image_area,
@@ -853,10 +843,6 @@ def search_scene_images(
                     filename
                 )
 
-    # --------------------------------------------------------
-    # General fallback
-    # --------------------------------------------------------
-
     if len(selected) < wanted:
 
         fallback_queries = [
@@ -875,7 +861,6 @@ def search_scene_images(
                 15,
             )
 
-            # Same safety protection
             results.sort(
                 key=image_area,
                 reverse=True,
@@ -1346,10 +1331,6 @@ def build_video():
         f"FINAL VIDEO SIZE: "
         f"{size_mb:.2f} MB"
     )
-
-    # ========================================================
-    # COMPRESS IF OVER 30 MB
-    # ========================================================
 
     if size_mb > MAX_VIDEO_MB:
 
