@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-import os
 import re
 import subprocess
 import sys
@@ -14,7 +13,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
 # ============================================================
-# ACURIVO VIDEO FACTORY V9
+# ACURIVO VIDEO FACTORY V10
 # ============================================================
 
 ROOT = Path(__file__).resolve().parent
@@ -37,9 +36,7 @@ WIDTH = 1920
 HEIGHT = 1080
 FPS = 30
 
-SCENE_COUNT = 8
-
-IMAGE_TIMEOUT = 12
+IMAGE_TIMEOUT = 10
 IMAGE_MIN_BYTES = 5000
 
 USER_AGENT = (
@@ -49,7 +46,7 @@ USER_AGENT = (
 
 
 # ============================================================
-# BASIC HELPERS
+# BASIC
 # ============================================================
 
 def run(cmd, check=True):
@@ -85,9 +82,7 @@ def ffprobe_duration(path):
             str(path),
         ])
 
-        return float(
-            result.stdout.strip()
-        )
+        return float(result.stdout.strip())
 
     except Exception:
 
@@ -156,10 +151,7 @@ def normalize_arabic(text):
 
     for a, b in replacements.items():
 
-        text = text.replace(
-            a,
-            b
-        )
+        text = text.replace(a, b)
 
     return text
 
@@ -234,9 +226,7 @@ def keyword_tokens(text):
 
 def discover_topic():
 
-    print(
-        "\n=== DISCOVERING TOPIC ==="
-    )
+    print("\n=== DISCOVERING TOPIC ===")
 
     queries = [
 
@@ -302,9 +292,7 @@ def discover_topic():
 
                 if title not in candidates:
 
-                    candidates.append(
-                        title
-                    )
+                    candidates.append(title)
 
         except Exception as e:
 
@@ -378,13 +366,11 @@ def discover_topic():
         for word in priority_words:
 
             if word.lower() in lower:
-
                 score += 3
 
         for word in bad_words:
 
             if word in lower:
-
                 score -= 10
 
         score += min(
@@ -590,7 +576,6 @@ def generate_voice(
     )
 
     if output.exists():
-
         output.unlink()
 
     asyncio.run(
@@ -618,7 +603,7 @@ def generate_voice(
 
 
 # ============================================================
-# PREMIUM AUDIO
+# PREMIUM AUDIO MASTERING
 # ============================================================
 
 def master_audio():
@@ -628,40 +613,18 @@ def master_audio():
     )
 
     if AUDIO_FINAL.exists():
-
         AUDIO_FINAL.unlink()
 
+    # Deliberately conservative FFmpeg filter chain.
+    # No unsupported compressor syntax.
     audio_filter = (
-
         "highpass=f=65,"
-
         "lowpass=f=15500,"
-
-        "acompressor="
-        "threshold=-20dB:"
-        "ratio=2.4:"
-        "attack=12:"
-        "release=160:"
-
-        "equalizer="
-        "f=150:"
-        "width_type=o:"
-        "width=1:"
-        "g=1.0:"
-
-        "equalizer="
-        "f=3000:"
-        "width_type=o:"
-        "width=1:"
-        "g=1.5:"
-
-        "aecho="
-        "0.88:"
-        "0.09:"
-        "60:"
-        "0.045:"
-
-        "volume=1.22"
+        "acompressor=threshold=-20dB:ratio=2.4:attack=12:release=160,"
+        "equalizer=f=150:width_type=o:width=1:g=1.0,"
+        "equalizer=f=3000:width_type=o:width=1:g=1.5,"
+        "aecho=0.88:0.09:60:0.045,"
+        "volume=1.15"
     )
 
     run([
@@ -700,12 +663,12 @@ def master_audio():
 
 
 # ============================================================
-# WIKIMEDIA SEARCH
+# WIKIMEDIA
 # ============================================================
 
 def search_wikimedia(
     query,
-    limit=8
+    limit=6
 ):
 
     try:
@@ -733,7 +696,7 @@ def search_wikimedia(
 
             "iiprop": "url|mime|size",
 
-            "iiurlwidth": 1600,
+            "iiurlwidth": 1400,
         }
 
         response = requests.get(
@@ -785,11 +748,12 @@ def search_wikimedia(
             )
 
             if not url:
-
                 continue
 
             results.append({
+
                 "url": url,
+
                 "title": page.get(
                     "title",
                     ""
@@ -809,12 +773,12 @@ def search_wikimedia(
 
 
 # ============================================================
-# WIKIPEDIA SEARCH
+# WIKIPEDIA
 # ============================================================
 
 def search_wikipedia(
     query,
-    limit=5
+    limit=4
 ):
 
     results = []
@@ -847,7 +811,7 @@ def search_wikipedia(
 
                 "piprop": "thumbnail",
 
-                "pithumbsize": 1600,
+                "pithumbsize": 1400,
             }
 
             response = requests.get(
@@ -880,7 +844,6 @@ def search_wikipedia(
                 )
 
                 if not thumbnail:
-
                     continue
 
                 url = thumbnail.get(
@@ -890,7 +853,9 @@ def search_wikipedia(
                 if url:
 
                     results.append({
+
                         "url": url,
+
                         "title": page.get(
                             "title",
                             ""
@@ -908,7 +873,7 @@ def search_wikipedia(
 
 
 # ============================================================
-# IMAGE SCORING
+# IMAGE SCORE
 # ============================================================
 
 def score_image(
@@ -925,7 +890,6 @@ def score_image(
     )
 
     if not title_words or not query_words:
-
         return 0
 
     overlap = len(
@@ -1006,10 +970,12 @@ def select_image(
 
         key=lambda item:
         score_image(
+
             item.get(
                 "title",
                 ""
             ),
+
             query
         ),
 
@@ -1020,7 +986,7 @@ def select_image(
 
 
 # ============================================================
-# FAST IMAGE DOWNLOAD
+# SAFE IMAGE DOWNLOAD
 # ============================================================
 
 def download_image(
@@ -1072,7 +1038,7 @@ def download_image(
     except Exception as e:
 
         print(
-            "Image failed:",
+            "Image download failed:",
             e
         )
 
@@ -1083,20 +1049,18 @@ def download_image(
             )
 
         except Exception:
-
             pass
 
         return False
 
 
 # ============================================================
-# CINEMATIC FALLBACK
+# FALLBACK IMAGE
 # ============================================================
 
 def create_fallback_image(
     scene_index,
-    topic,
-    scene
+    topic
 ):
 
     print(
@@ -1149,8 +1113,6 @@ def create_fallback_image(
     draw = ImageDraw.Draw(
         base
     )
-
-    # Cinematic circles / technology pattern.
 
     for i in range(18):
 
@@ -1208,15 +1170,12 @@ def create_fallback_image(
             width=3
         )
 
-    # Technology lines.
-
     for i in range(12):
 
         y = int(
             HEIGHT *
-            (
-                i + 1
-            ) / 13
+            (i + 1)
+            / 13
         )
 
         draw.line(
@@ -1245,23 +1204,30 @@ def create_fallback_image(
 
     for word in words:
 
-        draw.text(
+        # Only Latin words are rendered here.
+        # This avoids Arabic font failures.
+        if re.fullmatch(
+            r"[A-Za-z0-9]+",
+            word
+        ):
 
-            (
-                90,
-                y
-            ),
+            draw.text(
 
-            word.upper(),
+                (
+                    90,
+                    y
+                ),
 
-            fill=(
-                170,
-                185,
-                205
+                word.upper(),
+
+                fill=(
+                    170,
+                    185,
+                    205
+                )
             )
-        )
 
-        y += 58
+            y += 58
 
     base = ImageEnhance.Contrast(
         base
@@ -1340,7 +1306,7 @@ def prepare_image(
 
 
 # ============================================================
-# SCENE IMAGE CREATION
+# SCENE IMAGE
 # ============================================================
 
 def create_scene_image(
@@ -1357,7 +1323,7 @@ def create_scene_image(
     candidates = []
 
     # --------------------------------------------------------
-    # 1. Wikimedia
+    # Wikimedia
     # --------------------------------------------------------
 
     for query in scene["visual"]:
@@ -1368,29 +1334,27 @@ def create_scene_image(
         )
 
         results = search_wikimedia(
-            query,
-            limit=6
+            query
         )
 
         for item in results:
 
-            urls = {
+            existing = {
                 x["url"]
                 for x in candidates
             }
 
-            if item["url"] not in urls:
+            if item["url"] not in existing:
 
                 candidates.append(
                     item
                 )
 
         if len(candidates) >= 10:
-
             break
 
     # --------------------------------------------------------
-    # 2. Wikipedia
+    # Wikipedia
     # --------------------------------------------------------
 
     if not candidates:
@@ -1403,8 +1367,7 @@ def create_scene_image(
             )
 
             results = search_wikipedia(
-                query,
-                limit=4
+                query
             )
 
             candidates.extend(
@@ -1412,11 +1375,10 @@ def create_scene_image(
             )
 
             if candidates:
-
                 break
 
     # --------------------------------------------------------
-    # 3. Topic keyword fallback
+    # Topic fallback
     # --------------------------------------------------------
 
     if not candidates:
@@ -1431,8 +1393,7 @@ def create_scene_image(
             )
 
             results = search_wikimedia(
-                word,
-                limit=6
+                word
             )
 
             candidates.extend(
@@ -1440,7 +1401,6 @@ def create_scene_image(
             )
 
             if candidates:
-
                 break
 
     raw = (
@@ -1454,7 +1414,7 @@ def create_scene_image(
     )
 
     # --------------------------------------------------------
-    # 4. Try several candidate images
+    # Try several images
     # --------------------------------------------------------
 
     if candidates:
@@ -1479,7 +1439,6 @@ def create_scene_image(
             reverse=True
         )
 
-        # Try up to 5 images.
         for selected in ranked[:5]:
 
             print(
@@ -1511,7 +1470,7 @@ def create_scene_image(
                 return final
 
     # --------------------------------------------------------
-    # 5. Guaranteed fallback
+    # Guaranteed fallback
     # --------------------------------------------------------
 
     print(
@@ -1522,9 +1481,7 @@ def create_scene_image(
 
         scene_index,
 
-        topic,
-
-        scene
+        topic
     )
 
     prepare_image(
@@ -1562,7 +1519,6 @@ def generate_scene_audios(
         )
 
         if path.exists():
-
             path.unlink()
 
         generate_voice(
@@ -1859,7 +1815,6 @@ def mux_final_video(
     )
 
     if VIDEO_PATH.exists():
-
         VIDEO_PATH.unlink()
 
     run([
@@ -1945,18 +1900,18 @@ def main():
     )
 
     print(
-        "ACURIVO VIDEO FACTORY V9"
+        "ACURIVO VIDEO FACTORY V10"
     )
 
     print(
         "=" * 60
     )
 
-    # 1. Topic
+    # 1. Discover topic
 
     topic = discover_topic()
 
-    # 2. Script
+    # 2. Build script
 
     scenes = build_script(
         topic
@@ -2001,7 +1956,7 @@ def main():
         encoding="utf-8"
     )
 
-    # 3. Voice
+    # 3. Generate voices
 
     scene_audios = (
         generate_scene_audios(
@@ -2020,7 +1975,7 @@ def main():
 
     master_audio()
 
-    # 5. Images
+    # 5. Create visuals
 
     scene_images = []
 
@@ -2042,7 +1997,7 @@ def main():
             image
         )
 
-    # 6. Render
+    # 6. Render scenes
 
     scene_videos = []
 
@@ -2072,7 +2027,7 @@ def main():
             video
         )
 
-    # 7. Concatenate
+    # 7. Concatenate scenes
 
     concat_video = (
         concatenate_video(
@@ -2086,7 +2041,7 @@ def main():
         concat_video
     )
 
-    # 9. Verification
+    # 9. Final verification
 
     final_duration = (
         ffprobe_duration(
@@ -2151,6 +2106,10 @@ def main():
         "\nSUCCESS."
     )
 
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
 
