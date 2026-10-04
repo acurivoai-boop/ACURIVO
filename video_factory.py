@@ -34,7 +34,7 @@ WIDTH = 1920
 HEIGHT = 1080
 FPS = 30
 
-MAX_VIDEO_MB = 45
+MAX_VIDEO_MB = 30
 
 VOICE = "ar-SA-HamedNeural"
 VOICE_RATE = "-6%"
@@ -1348,13 +1348,13 @@ def build_video():
     )
 
     # ========================================================
-    # COMPRESS IF OVER 45 MB
+    # COMPRESS IF OVER 30 MB
     # ========================================================
 
     if size_mb > MAX_VIDEO_MB:
 
         print(
-            "VIDEO ABOVE 45 MB — "
+            "VIDEO ABOVE 30 MB — "
             "COMPRESSING..."
         )
 
