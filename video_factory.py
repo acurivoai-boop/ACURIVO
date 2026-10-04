@@ -1,44 +1,51 @@
-import asyncio
-import hashlib
+# ============================================================
+# ACURIVO — RONALDO LEGEND STORY
+# Production Video Factory
+# ============================================================
+
+import os
 import re
+import math
+import time
+import shutil
+import random
 import subprocess
-import sys
-import urllib.parse
-import urllib.request
+import asyncio
 from pathlib import Path
 
-import edge_tts
 import requests
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFont
+import edge_tts
 
 
 # ============================================================
-# ACURIVO VIDEO FACTORY - PRODUCTION V1
+# CONFIG
 # ============================================================
 
 ROOT = Path(__file__).resolve().parent
+
 WORK = ROOT / "work"
 OUTPUT = ROOT / "output"
 
 WORK.mkdir(exist_ok=True)
 OUTPUT.mkdir(exist_ok=True)
 
-VIDEO_PATH = OUTPUT / "ACURIVO_VIDEO.mp4"
+VIDEO_FINAL = OUTPUT / "ACURIVO_VIDEO.mp4"
 
 AUDIO_RAW = WORK / "voice_raw.mp3"
 AUDIO_FINAL = WORK / "voice_final.mp3"
-
-VOICE = "ar-SA-HamedNeural"
-VOICE_RATE = "-6%"
-VOICE_PITCH = "-1Hz"
 
 WIDTH = 1920
 HEIGHT = 1080
 FPS = 30
 
-IMAGE_TIMEOUT = 10
-IMAGE_MIN_BYTES = 5000
+IMAGE_TIMEOUT = 15
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+IMAGE_MIN_BYTES = 20_000
+
+VOICE = "ar-SA-HamedNeural"
+VOICE_RATE = "-6%"
+VOICE_PITCH = "-1Hz"
 
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) "
@@ -47,32 +54,189 @@ USER_AGENT = (
 
 
 # ============================================================
-# BASIC
+# RONALDO STORY
 # ============================================================
 
-def run(cmd, check=True):
+TITLE = "رونالدو... الطفل الذي رفض أن يكون عاديًا"
 
-    print("RUN:", " ".join(str(x) for x in cmd))
+SCENES = [
+
+    {
+        "text": """
+في جزيرة ماديرا البرتغالية، وُلد طفل اسمه كريستيانو رونالدو.
+لم يكن يملك في بدايته ملاعب فاخرة، ولا طريقًا مضمونًا نحو الشهرة.
+كان يملك كرة... وحلمًا أكبر من عمره.
+ومنذ طفولته، كان يشعر أن كرة القدم ليست مجرد لعبة بالنسبة له.
+كانت الطريق التي يريد أن يسلكها مهما كان الثمن.
+""",
+        "queries": [
+            "Cristiano Ronaldo childhood Madeira",
+            "Funchal Madeira Portugal football childhood",
+            "young Portuguese football player childhood"
+        ],
+    },
+
+    {
+        "text": """
+في الحادية عشرة من عمره، اتخذ رونالدو خطوة غيّرت حياته.
+غادر ماديرا وانتقل إلى لشبونة للانضمام إلى أكاديمية سبورتينغ.
+كان صغيرًا جدًا على أن يعيش بعيدًا عن عائلته،
+لكن حلمه كان أكبر من خوفه.
+هناك بدأ شيء مختلف تمامًا.
+بدأت موهبته تلفت الأنظار،
+وبدأ الجميع يلاحظ أن هذا الطفل ليس لاعبًا عاديًا.
+""",
+        "queries": [
+            "Sporting CP academy Lisbon Ronaldo",
+            "Sporting Lisbon football academy",
+            "Lisbon Portugal football academy training"
+        ],
+    },
+
+    {
+        "text": """
+تطور رونالدو بسرعة مذهلة.
+في الخامسة عشرة كان يتدرب مع فريق سبورتينغ الثاني،
+وفي السادسة عشرة بدأ التدريب مع الفريق الأول.
+ثم جاء عام ألفين واثنين...
+اللحظة التي ظهر فيها الفتى لأول مرة مع الفريق الأول.
+كان عمره سبعة عشر عامًا فقط.
+لكن ما قدمه في الملعب جعل الناس يتحدثون عن موهبة استثنائية قادمة.
+""",
+        "queries": [
+            "Cristiano Ronaldo Sporting CP 2002",
+            "Ronaldo Sporting Lisbon 2002",
+            "Sporting CP Ronaldo young player"
+        ],
+    },
+
+    {
+        "text": """
+ثم جاءت اللحظة التي غيرت كل شيء.
+في أغسطس عام ألفين وثلاثة،
+ظهر رونالدو بقميص مانشستر يونايتد أمام بولتون.
+دخل شابًا صغيرًا...
+وخرج من المباراة وهو حديث الجميع.
+سرعته، مهاراته، جرأته، وقدرته على مواجهة المدافعين
+جعلت السير أليكس فيرغسون يدرك أن أمامه مشروع نجم كبير.
+""",
+        "queries": [
+            "Cristiano Ronaldo Manchester United 2003",
+            "Ronaldo Manchester United debut 2003",
+            "Old Trafford Ronaldo 2003"
+        ],
+    },
+
+    {
+        "text": """
+لكن الموهبة وحدها لم تكن كافية.
+في مانشستر يونايتد بدأ رونالدو رحلة التحول.
+لم يعد مجرد جناح يراوغ المدافعين.
+بدأ يتعلم كيف يتحرك، وكيف يسجل، وكيف يتحمل الضغط،
+وكيف يحول المهارة إلى أرقام.
+كان يتطور موسمًا بعد موسم.
+وفي عام ألفين وثمانية،
+وصل إلى واحدة من أعظم لحظات مسيرته.
+دوري أبطال أوروبا...
+ثم الكرة الذهبية.
+""",
+        "queries": [
+            "Cristiano Ronaldo Manchester United 2008 Champions League",
+            "Ronaldo Ballon d'Or 2008",
+            "Manchester United Ronaldo 2008 celebration"
+        ],
+    },
+
+    {
+        "text": """
+ثم جاء الانتقال الذي جعل العالم كله يراقبه.
+في عام ألفين وتسعة،
+انتقل رونالدو إلى ريال مدريد وهو في الرابعة والعشرين.
+لم يكن مجرد انتقال لاعب كبير.
+كان بداية مرحلة جديدة.
+في مدريد، أصبح أكثر قوة،
+وأكثر حسمًا،
+وأكثر شراسة أمام المرمى.
+تحول اللاعب الموهوب إلى ماكينة أهداف،
+وأصبح اسمه مرتبطًا بأكبر ليالي كرة القدم.
+""",
+        "queries": [
+            "Cristiano Ronaldo Real Madrid 2009",
+            "Ronaldo Real Madrid presentation 2009",
+            "Cristiano Ronaldo Santiago Bernabeu 2009"
+        ],
+    },
+
+    {
+        "text": """
+ومع السنوات، لم تعد قصة رونالدو قصة موهبة فقط.
+أصبحت قصة انضباط.
+تدريب متواصل.
+اهتمام بالتفاصيل.
+ورغبة لا تهدأ في أن يكون أفضل.
+لقد تغير جسده، وتغير أسلوب لعبه،
+وتغيرت طريقته في التسجيل...
+لكن الشيء الذي لم يتغير كان الجوع.
+كلما وصل إلى القمة، بحث عن قمة أعلى.
+""",
+        "queries": [
+            "Cristiano Ronaldo training Real Madrid",
+            "Ronaldo intense training football",
+            "Cristiano Ronaldo gym training"
+        ],
+    },
+
+    {
+        "text": """
+من طفل صغير في ماديرا...
+إلى فتى غادر عائلته في الحادية عشرة...
+إلى لاعب شاب في سبورتينغ...
+ثم نجم في مانشستر يونايتد...
+ثم أسطورة في ريال مدريد...
+أصبح كريستيانو رونالدو واحدًا من أشهر لاعبي كرة القدم في التاريخ.
+لكن ربما تكون أعظم قصته ليست عدد الأهداف...
+ولا عدد البطولات...
+بل أنه أثبت أن الموهبة تفتح الباب،
+لكن العمل والانضباط هما ما يبقيانك في القمة.
+هذه ليست فقط قصة لاعب كرة قدم.
+هذه قصة طفل قرر منذ البداية...
+أنه لن يكون عاديًا.
+""",
+        "queries": [
+            "Cristiano Ronaldo career celebration",
+            "Cristiano Ronaldo legendary football career",
+            "Ronaldo football stadium celebration"
+        ],
+    },
+
+]
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def run(cmd, cwd=None):
+    print("\nRUN:", " ".join(str(x) for x in cmd))
 
     result = subprocess.run(
-        [str(x) for x in cmd],
-        check=check,
+        cmd,
+        cwd=cwd,
+        check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
 
     if result.stdout:
-        print(result.stdout[-3000:])
+        print(result.stdout[-4000:])
 
     return result
 
 
 def ffprobe_duration(path):
-
-    try:
-
-        result = run([
+    result = subprocess.run(
+        [
             "ffprobe",
             "-v",
             "error",
@@ -81,537 +245,117 @@ def ffprobe_duration(path):
             "-of",
             "default=noprint_wrappers=1:nokey=1",
             str(path),
-        ])
-
-        return float(result.stdout.strip())
-
-    except Exception:
-
-        return 0.0
-
-
-def clean_text(text):
-
-    text = text or ""
-
-    text = re.sub(
-        r"<[^>]+>",
-        " ",
-        text
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
     )
 
-    text = re.sub(
-        r"\*\*(.*?)\*\*",
-        r"\1",
-        text
-    )
-
-    text = re.sub(
-        r"\*(.*?)\*",
-        r"\1",
-        text
-    )
-
-    text = re.sub(
-        r"`(.*?)`",
-        r"\1",
-        text
-    )
-
-    text = re.sub(
-        r"[\x00-\x08\x0B\x0C\x0E-\x1F]",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"[ \t]+",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"\n{3,}",
-        "\n\n",
-        text
-    )
-
-    return text.strip()
+    return float(result.stdout.strip())
 
 
-def normalize_arabic(text):
+# ============================================================
+# CLEAN
+# ============================================================
 
-    text = clean_text(text)
+def clean_workspace():
 
-    replacements = {
-        "أ": "ا",
-        "إ": "ا",
-        "آ": "ا",
-        "ى": "ي",
-    }
+    print("\n=== CLEAN WORKSPACE ===")
 
-    for a, b in replacements.items():
+    for folder in [WORK, OUTPUT]:
 
-        text = text.replace(a, b)
+        folder.mkdir(exist_ok=True)
+
+        for item in folder.iterdir():
+
+            if item.is_file():
+                try:
+                    item.unlink()
+                except Exception:
+                    pass
+
+            elif item.is_dir():
+                try:
+                    shutil.rmtree(item)
+                except Exception:
+                    pass
+
+    print("WORKSPACE READY")
+
+
+# ============================================================
+# BUILD SCRIPT
+# ============================================================
+
+def build_script():
+
+    print("\n=== BUILDING RONALDO STORY ===")
+
+    parts = []
+
+    for scene in SCENES:
+        parts.append(scene["text"].strip())
+
+    text = "\n\n".join(parts)
+
+    script_file = WORK / "script.txt"
+    script_file.write_text(text, encoding="utf-8")
+
+    print("SCRIPT READY")
+    print("CHARACTERS:", len(text))
 
     return text
-
-
-def keyword_tokens(text):
-
-    text = normalize_arabic(text)
-
-    words = re.findall(
-        r"[\u0600-\u06FF]{3,}|[A-Za-z]{3,}",
-        text
-    )
-
-    stop = {
-        "this",
-        "that",
-        "with",
-        "from",
-        "into",
-        "near",
-        "says",
-        "about",
-        "after",
-        "will",
-        "have",
-        "been",
-        "more",
-        "latest",
-        "news",
-        "breakthrough",
-        "technology",
-        "modern",
-        "future",
-        "world",
-        "the",
-        "and",
-        "for",
-        "كيف",
-        "لماذا",
-        "ماذا",
-        "هذا",
-        "هذه",
-        "التي",
-        "الذي",
-        "هناك",
-        "يمكن",
-        "خلال",
-        "اليوم",
-        "العالم",
-        "بشكل",
-        "اكثر",
-        "الناس",
-        "حول",
-        "الى",
-        "على",
-        "من",
-        "في",
-        "عن",
-        "مع",
-    }
-
-    return [
-        word
-        for word in words
-        if word.lower() not in stop
-    ]
-
-
-# ============================================================
-# TOPIC DISCOVERY
-# ============================================================
-
-def discover_topic():
-
-    print("\n=== DISCOVERING TOPIC ===")
-
-    queries = [
-
-        "latest technology news",
-
-        "AI latest news",
-
-        "artificial intelligence breakthrough",
-
-        "robotics latest news",
-
-        "future technology",
-
-        "science technology latest",
-
-        "business technology trend",
-
-        "energy technology latest",
-
-        "space technology latest",
-    ]
-
-    candidates = []
-
-    for query in queries:
-
-        try:
-
-            url = (
-                "https://www.youtube.com/results?"
-                "search_query="
-                + urllib.parse.quote(query)
-            )
-
-            request = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": USER_AGENT
-                }
-            )
-
-            with urllib.request.urlopen(
-                request,
-                timeout=15
-            ) as response:
-
-                html = response.read().decode(
-                    "utf-8",
-                    errors="ignore"
-                )
-
-            titles = re.findall(
-                r'"title":{"runs":\[\{"text":"(.*?)"\}\]',
-                html
-            )
-
-            for title in titles[:15]:
-
-                title = clean_text(title)
-
-                if len(title) < 20:
-                    continue
-
-                if title not in candidates:
-
-                    candidates.append(title)
-
-        except Exception as e:
-
-            print(
-                "Topic search warning:",
-                e
-            )
-
-    if not candidates:
-
-        return (
-            "كيف يغيّر الذكاء الاصطناعي "
-            "طريقة عمل الشركات في المستقبل؟"
-        )
-
-    priority_words = [
-
-        "AI",
-        "artificial",
-        "intelligence",
-        "ذكاء",
-        "الذكاء",
-
-        "robot",
-        "robotics",
-        "روبوت",
-
-        "future",
-        "المستقبل",
-
-        "technology",
-        "تقنية",
-
-        "energy",
-        "طاقة",
-
-        "space",
-        "فضاء",
-
-        "chip",
-        "رقائق",
-    ]
-
-    bad_words = [
-
-        "football",
-        "soccer",
-        "match",
-        "goal",
-
-        "music",
-        "song",
-
-        "movie",
-        "trailer",
-
-        "gaming",
-        "gameplay",
-
-        "celebrity",
-    ]
-
-    scored = []
-
-    for title in candidates:
-
-        score = 0
-
-        lower = title.lower()
-
-        for word in priority_words:
-
-            if word.lower() in lower:
-                score += 3
-
-        for word in bad_words:
-
-            if word in lower:
-                score -= 10
-
-        score += min(
-            len(title) / 50,
-            2
-        )
-
-        scored.append(
-            (
-                score,
-                title
-            )
-        )
-
-    scored.sort(
-        key=lambda item: item[0],
-        reverse=True
-    )
-
-    topic = scored[0][1]
-
-    print(
-        "SELECTED TOPIC:",
-        topic
-    )
-
-    return topic
-
-
-# ============================================================
-# SCRIPT
-# ============================================================
-
-def build_script(topic):
-
-    topic = clean_text(topic)
-
-    scenes = [
-
-        {
-            "text": (
-                f"في السنوات الأخيرة، بدأ موضوع {topic} "
-                "يتحول من فكرة متخصصة إلى موضوع يؤثر "
-                "في القرارات والأعمال والحياة اليومية."
-            ),
-
-            "visual": [
-                "robotics",
-                "artificial intelligence",
-                "technology",
-                "robot"
-            ],
-        },
-
-        {
-            "text": (
-                "لكن السؤال الأهم ليس فقط ماذا يحدث، "
-                "بل لماذا أصبح هذا الموضوع مهمًا الآن؟ "
-                "السبب هو تسارع التطور، وتداخل التقنية "
-                "مع قطاعات كانت في السابق بعيدة عنها."
-            ),
-
-            "visual": [
-                "artificial intelligence",
-                "technology innovation",
-                "future technology",
-                "robotics"
-            ],
-        },
-
-        {
-            "text": (
-                "التغيير الحقيقي يظهر عندما تنتقل الفكرة "
-                "من المختبر أو الأخبار إلى تطبيقات فعلية. "
-                "عندها تبدأ الشركات والمؤسسات في إعادة التفكير "
-                "في طريقة العمل، والتكلفة، والسرعة، وحتى المخاطر."
-            ),
-
-            "visual": [
-                "industrial robotics",
-                "technology industry",
-                "smart factory",
-                "automation"
-            ],
-        },
-
-        {
-            "text": (
-                "وهنا تظهر نقطة مهمة. "
-                "التقنية وحدها لا تكفي. "
-                "القيمة الحقيقية تأتي من الطريقة التي تستخدم بها، "
-                "ومن جودة البيانات، ومن قدرة الإنسان على اتخاذ "
-                "القرار الصحيح في الوقت المناسب."
-            ),
-
-            "visual": [
-                "data center",
-                "computer data",
-                "artificial intelligence data",
-                "human computer"
-            ],
-        },
-
-        {
-            "text": (
-                "وفي المقابل، توجد تحديات لا يمكن تجاهلها. "
-                "منها الخصوصية، والأمن، والاعتماد الزائد على الأنظمة، "
-                "إضافة إلى الحاجة إلى مهارات جديدة تستطيع التعامل "
-                "مع هذا التحول بسرعة ووعي."
-            ),
-
-            "visual": [
-                "cybersecurity",
-                "computer security",
-                "digital security",
-                "data security"
-            ],
-        },
-
-        {
-            "text": (
-                "ورغم هذه التحديات، فإن الاتجاه العام واضح. "
-                "الجهات التي تفهم التحول مبكرًا تستطيع بناء ميزة "
-                "تنافسية، بينما قد تجد الجهات المتأخرة نفسها "
-                "تتعامل مع واقع جديد فرض نفسه بالفعل."
-            ),
-
-            "visual": [
-                "business technology",
-                "digital transformation",
-                "modern industry",
-                "innovation"
-            ],
-        },
-
-        {
-            "text": (
-                "خلال السنوات القادمة، لن يكون السؤال فقط "
-                "من يملك التقنية الأقوى. "
-                "السؤال سيكون: من يستطيع تحويلها إلى قيمة حقيقية، "
-                "وبطريقة آمنة ومستدامة وقابلة للتوسع؟"
-            ),
-
-            "visual": [
-                "future technology",
-                "advanced robotics",
-                "future industry",
-                "artificial intelligence future"
-            ],
-        },
-
-        {
-            "text": (
-                "وفي النهاية، قد لا يكون أهم ما في هذا التحول "
-                "هو التقنية نفسها، بل الطريقة التي ستغير بها "
-                "قراراتنا وأعمالنا ونظرتنا إلى المستقبل. "
-                "وهذا بالضبط ما يجعل متابعة هذه التطورات "
-                "أمرًا يستحق الانتباه."
-            ),
-
-            "visual": [
-                "future technology",
-                "technology future",
-                "artificial intelligence",
-                "digital future"
-            ],
-        },
-    ]
-
-    return scenes
 
 
 # ============================================================
 # VOICE
 # ============================================================
 
-async def generate_voice_async(
-    text,
-    output
-):
-
-    text = clean_text(text)
+async def create_voice_async(text):
 
     communicate = edge_tts.Communicate(
-        text=text,
-        voice=VOICE,
+        text,
+        VOICE,
         rate=VOICE_RATE,
         pitch=VOICE_PITCH,
     )
 
-    await communicate.save(
-        str(output)
-    )
+    await communicate.save(str(AUDIO_RAW))
 
 
-def generate_voice(
-    text,
-    output
-):
+def create_voice(text):
 
-    print(
-        "\n=== GENERATING ARABIC VOICE ==="
-    )
+    print("\n=== GENERATING ARABIC VOICE ===")
 
-    if output.exists():
-        output.unlink()
+    if AUDIO_RAW.exists():
+        AUDIO_RAW.unlink()
 
     asyncio.run(
-        generate_voice_async(
-            text,
-            output
-        )
+        create_voice_async(text)
     )
+
+    if not AUDIO_RAW.exists():
+        raise RuntimeError(
+            "Voice generation failed."
+        )
 
     duration = ffprobe_duration(
-        output
+        AUDIO_RAW
     )
 
-    if duration <= 0:
-
-        raise RuntimeError(
-            "Voice generation produced "
-            "an invalid audio file."
-        )
-
     print(
-        f"VOICE DURATION: "
-        f"{duration:.2f}s"
+        f"RAW VOICE DURATION: {duration:.2f}s"
     )
 
 
 # ============================================================
-# PREMIUM AUDIO MASTERING
+# PREMIUM AUDIO
 # ============================================================
 
 def master_audio():
 
-    print(
-        "\n=== MASTERING PREMIUM VOICE ==="
-    )
+    print("\n=== MASTERING PREMIUM VOICE ===")
 
     if AUDIO_FINAL.exists():
         AUDIO_FINAL.unlink()
@@ -619,90 +363,85 @@ def master_audio():
     audio_filter = (
         "highpass=f=65,"
         "lowpass=f=15500,"
-        "acompressor=threshold=-20dB:ratio=2.4:attack=12:release=160,"
-        "equalizer=f=150:width_type=o:width=1:g=1.0,"
-        "equalizer=f=3000:width_type=o:width=1:g=1.5,"
-        "aecho=0.88:0.09:60:0.045,"
+        "acompressor="
+        "threshold=-20dB:"
+        "ratio=2.4:"
+        "attack=12:"
+        "release=160,"
+        "equalizer="
+        "f=150:"
+        "width_type=o:"
+        "width=1:"
+        "g=1.0,"
+        "equalizer="
+        "f=3000:"
+        "width_type=o:"
+        "width=1:"
+        "g=1.5,"
+        "aecho="
+        "0.88:0.09:60:0.045,"
         "volume=1.15"
     )
 
-    run([
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(AUDIO_RAW),
-        "-af",
-        audio_filter,
-        "-codec:a",
-        "libmp3lame",
-        "-b:a",
-        "192k",
-        str(AUDIO_FINAL),
-    ])
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(AUDIO_RAW),
+            "-af",
+            audio_filter,
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
+            str(AUDIO_FINAL),
+        ]
+    )
 
     duration = ffprobe_duration(
         AUDIO_FINAL
     )
 
     if duration <= 0:
-
         raise RuntimeError(
             "Premium audio mastering failed."
         )
 
     print(
-        f"PREMIUM AUDIO: "
-        f"{duration:.2f}s"
+        f"PREMIUM AUDIO: {duration:.2f}s"
     )
 
 
 # ============================================================
-# WIKIMEDIA
+# WIKIMEDIA SEARCH
 # ============================================================
 
-def search_wikimedia(
-    query,
-    limit=6
-):
+def wikimedia_search(query, limit=8):
+
+    url = (
+        "https://commons.wikimedia.org/w/api.php"
+    )
+
+    params = {
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrnamespace": 6,
+        "gsrlimit": limit,
+        "prop": "imageinfo",
+        "iiprop": "url|size|mime",
+        "format": "json",
+    }
 
     try:
 
-        api = (
-            "https://commons.wikimedia.org/"
-            "w/api.php"
-        )
-
-        params = {
-
-            "action": "query",
-
-            "format": "json",
-
-            "generator": "search",
-
-            "gsrsearch": query,
-
-            "gsrnamespace": 6,
-
-            "gsrlimit": limit,
-
-            "prop": "imageinfo",
-
-            "iiprop": "url|mime|size",
-
-            "iiurlwidth": 1400,
-        }
-
         response = requests.get(
-
-            api,
-
+            url,
             params=params,
-
             headers={
                 "User-Agent": USER_AGENT
             },
-
             timeout=IMAGE_TIMEOUT,
         )
 
@@ -720,46 +459,54 @@ def search_wikimedia(
 
         for page in pages.values():
 
-            info = page.get(
-                "imageinfo",
-                [{}]
-            )[0]
-
-            mime = info.get(
-                "mime",
-                ""
+            info = (
+                page
+                .get("imageinfo", [])
             )
 
-            if not mime.startswith(
-                "image/"
-            ):
-
+            if not info:
                 continue
 
-            url = (
-                info.get("thumburl")
-                or info.get("url")
+            item = info[0]
+
+            image_url = item.get("url")
+
+            mime = (
+                item
+                .get("mime", "")
+                .lower()
             )
 
-            if not url:
+            width = item.get("width", 0)
+            height = item.get("height", 0)
+
+            if not image_url:
                 continue
 
-            results.append({
+            if not mime.startswith("image/"):
+                continue
 
-                "url": url,
+            if width < 500 or height < 300:
+                continue
 
-                "title": page.get(
-                    "title",
-                    ""
-                ),
-            })
+            results.append(
+                {
+                    "title": page.get(
+                        "title",
+                        ""
+                    ),
+                    "url": image_url,
+                    "width": width,
+                    "height": height,
+                }
+            )
 
         return results
 
     except Exception as e:
 
         print(
-            "Wikimedia warning:",
+            "WIKIMEDIA SEARCH ERROR:",
             e
         )
 
@@ -767,222 +514,10 @@ def search_wikimedia(
 
 
 # ============================================================
-# WIKIPEDIA
+# IMAGE DOWNLOAD — ROBUST
 # ============================================================
 
-def search_wikipedia(
-    query,
-    limit=4
-):
-
-    results = []
-
-    for language in [
-        "en",
-        "ar",
-    ]:
-
-        try:
-
-            api = (
-                f"https://{language}.wikipedia.org/"
-                "w/api.php"
-            )
-
-            params = {
-
-                "action": "query",
-
-                "format": "json",
-
-                "generator": "search",
-
-                "gsrsearch": query,
-
-                "gsrlimit": limit,
-
-                "prop": "pageimages",
-
-                "piprop": "thumbnail",
-
-                "pithumbsize": 1400,
-            }
-
-            response = requests.get(
-
-                api,
-
-                params=params,
-
-                headers={
-                    "User-Agent": USER_AGENT
-                },
-
-                timeout=IMAGE_TIMEOUT,
-            )
-
-            response.raise_for_status()
-
-            data = response.json()
-
-            pages = (
-                data
-                .get("query", {})
-                .get("pages", {})
-            )
-
-            for page in pages.values():
-
-                thumbnail = page.get(
-                    "thumbnail"
-                )
-
-                if not thumbnail:
-                    continue
-
-                url = thumbnail.get(
-                    "source"
-                )
-
-                if url:
-
-                    results.append({
-
-                        "url": url,
-
-                        "title": page.get(
-                            "title",
-                            ""
-                        ),
-                    })
-
-        except Exception as e:
-
-            print(
-                "Wikipedia warning:",
-                e
-            )
-
-    return results
-
-
-# ============================================================
-# IMAGE SCORE
-# ============================================================
-
-def score_image(
-    title,
-    query
-):
-
-    title_words = set(
-        keyword_tokens(title)
-    )
-
-    query_words = set(
-        keyword_tokens(query)
-    )
-
-    if not title_words or not query_words:
-        return 0
-
-    overlap = len(
-        title_words &
-        query_words
-    )
-
-    score = overlap * 12
-
-    useful = [
-
-        "robot",
-        "robotics",
-
-        "artificial",
-        "intelligence",
-
-        "technology",
-
-        "computer",
-
-        "machine",
-
-        "industry",
-
-        "factory",
-
-        "data",
-
-        "server",
-
-        "cyber",
-
-        "security",
-
-        "science",
-
-        "laboratory",
-
-        "energy",
-
-        "space",
-
-        "satellite",
-
-        "chip",
-
-        "future",
-
-        "automation",
-    ]
-
-    combined = " ".join(
-        title_words
-    ).lower()
-
-    for word in useful:
-
-        if word in combined:
-            score += 2
-
-    return score
-
-
-def select_image(
-    query,
-    candidates
-):
-
-    if not candidates:
-        return None
-
-    ranked = sorted(
-
-        candidates,
-
-        key=lambda item:
-        score_image(
-            item.get(
-                "title",
-                ""
-            ),
-            query
-        ),
-
-        reverse=True
-    )
-
-    return ranked[0]
-
-
-# ============================================================
-# SAFE IMAGE DOWNLOAD - FIXED
-# ============================================================
-
-def download_image(
-    url,
-    output
-):
+def download_image(url, output):
 
     try:
 
@@ -991,20 +526,12 @@ def download_image(
         )
 
         response = requests.get(
-
             url,
-
             headers={
                 "User-Agent": USER_AGENT
             },
-
-            timeout=(
-                5,
-                IMAGE_TIMEOUT
-            ),
-
+            timeout=(5, IMAGE_TIMEOUT),
             stream=True,
-
             allow_redirects=True,
         )
 
@@ -1012,27 +539,20 @@ def download_image(
 
         content_type = (
             response.headers
-            .get(
-                "Content-Type",
-                ""
-            )
+            .get("Content-Type", "")
             .lower()
         )
 
         if not content_type.startswith(
             "image/"
         ):
-
             raise RuntimeError(
-                f"Invalid content type: "
-                f"{content_type}"
+                f"Invalid content type: {content_type}"
             )
 
         content_length = (
             response.headers
-            .get(
-                "Content-Length"
-            )
+            .get("Content-Length")
         )
 
         if content_length:
@@ -1075,18 +595,12 @@ def download_image(
             bytes(data)
         )
 
-        # First integrity check
-        with Image.open(
-            output
-        ) as img:
-
+        # First validation
+        with Image.open(output) as img:
             img.verify()
 
-        # Second check:
-        # actually load all pixels
-        with Image.open(
-            output
-        ) as img:
+        # Second validation
+        with Image.open(output) as img:
 
             img.load()
 
@@ -1113,11 +627,9 @@ def download_image(
         )
 
         try:
-
             output.unlink(
                 missing_ok=True
             )
-
         except Exception:
             pass
 
@@ -1125,886 +637,574 @@ def download_image(
 
 
 # ============================================================
-# FALLBACK IMAGE
+# SCORE IMAGE
 # ============================================================
 
-def create_fallback_image(
-    scene_index,
-    topic
-):
+def score_image(title, query):
 
-    print(
-        "Creating cinematic fallback..."
+    title_lower = title.lower()
+    query_words = set(
+        re.findall(
+            r"[a-zA-Z0-9]+",
+            query.lower()
+        )
     )
+
+    title_words = set(
+        re.findall(
+            r"[a-zA-Z0-9]+",
+            title_lower
+        )
+    )
+
+    score = len(
+        query_words.intersection(
+            title_words
+        )
+    )
+
+    # Strong Ronaldo relevance
+    if "ronaldo" in title_lower:
+        score += 8
+
+    if "cristiano" in title_lower:
+        score += 8
+
+    if "football" in title_lower:
+        score += 2
+
+    if "sporting" in title_lower:
+        score += 2
+
+    if "manchester" in title_lower:
+        score += 2
+
+    if "real madrid" in title_lower:
+        score += 2
+
+    return score
+
+
+# ============================================================
+# FALLBACK CINEMATIC IMAGE
+# ============================================================
+
+def create_fallback_image(index, text):
 
     output = (
         WORK /
-        f"scene_{scene_index}_fallback.jpg"
+        f"scene_{index:02d}.jpg"
     )
 
-    seed = hashlib.md5(
-
-        f"{topic}-{scene_index}".encode(
-            "utf-8"
-        )
-
-    ).hexdigest()
-
-    values = [
-
-        int(
-            seed[i:i+2],
-            16
-        )
-
-        for i in range(
-            0,
-            12,
-            2
-        )
-    ]
-
-    base = Image.new(
-
+    img = Image.new(
         "RGB",
-
-        (
-            WIDTH,
-            HEIGHT
-        ),
-
-        (
-            8 + values[0] % 18,
-            12 + values[1] % 20,
-            20 + values[2] % 25,
-        )
+        (WIDTH, HEIGHT),
+        (15, 18, 25),
     )
 
-    draw = ImageDraw.Draw(
-        base
-    )
+    draw = ImageDraw.Draw(img)
 
-    for i in range(18):
+    # Gradient
+    for y in range(HEIGHT):
 
-        x = (
-
-            values[
-                (i + 1) %
-                len(values)
-            ]
-
-            / 255
-
-            * WIDTH
-        )
-
-        y = (
-
-            values[
-                (i + 2) %
-                len(values)
-            ]
-
-            / 255
-
-            * HEIGHT
-        )
-
-        radius = (
-
-            80 +
-
-            values[
-                (i + 3) %
-                len(values)
-            ]
-
-            * 2
-        )
-
-        draw.ellipse(
-
-            (
-                x - radius,
-                y - radius,
-                x + radius,
-                y + radius,
-            ),
-
-            outline=(
-                45,
-                65,
-                95
-            ),
-
-            width=3
-        )
-
-    for i in range(12):
-
-        y = int(
-            HEIGHT *
-            (i + 1)
-            / 13
+        shade = int(
+            15 +
+            35 * y / HEIGHT
         )
 
         draw.line(
-
-            (
-                0,
-                y,
-                WIDTH,
-                y
-            ),
-
+            [(0, y), (WIDTH, y)],
             fill=(
-                25,
-                38,
-                58
+                shade,
+                shade,
+                shade + 8
             ),
-
-            width=2
         )
 
-    words = keyword_tokens(
-        topic
-    )[:5]
+    # Football-like circles
+    random.seed(index)
 
-    y = 100
+    for _ in range(20):
 
-    for word in words:
-
-        if re.fullmatch(
-            r"[A-Za-z0-9]+",
-            word
-        ):
-
-            draw.text(
-
-                (
-                    90,
-                    y
-                ),
-
-                word.upper(),
-
-                fill=(
-                    170,
-                    185,
-                    205
-                )
-            )
-
-            y += 58
-
-    base = ImageEnhance.Contrast(
-        base
-    ).enhance(1.18)
-
-    base = base.filter(
-        ImageFilter.GaussianBlur(
-            radius=0.15
+        x = random.randint(
+            0,
+            WIDTH
         )
+
+        y = random.randint(
+            0,
+            HEIGHT
+        )
+
+        r = random.randint(
+            10,
+            50
+        )
+
+        draw.ellipse(
+            [
+                x-r,
+                y-r,
+                x+r,
+                y+r
+            ],
+            outline=(
+                120,
+                120,
+                140
+            ),
+            width=2,
+        )
+
+    # Text
+    try:
+
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            70,
+        )
+
+        small_font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            32,
+        )
+
+    except Exception:
+
+        font = None
+        small_font = None
+
+    title = "CRISTIANO RONALDO"
+
+    bbox = draw.textbbox(
+        (0, 0),
+        title,
+        font=font
     )
 
-    base.save(
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
 
+    draw.text(
+        (
+            (WIDTH - tw) / 2,
+            HEIGHT / 2 - th
+        ),
+        title,
+        fill=(245, 245, 245),
+        font=font,
+    )
+
+    draw.text(
+        (70, HEIGHT - 90),
+        f"ACURIVO  •  STORY {index}",
+        fill=(180, 180, 190),
+        font=small_font,
+    )
+
+    img.save(
         output,
-
-        "JPEG",
-
-        quality=92
+        quality=94
     )
 
     return output
 
 
 # ============================================================
-# PREPARE IMAGE
+# CREATE SCENE IMAGE
 # ============================================================
 
-def prepare_image(
-    source,
-    target
-):
-
-    with Image.open(
-        source
-    ) as img:
-
-        img = img.convert(
-            "RGB"
-        )
-
-        img = ImageOps.fit(
-
-            img,
-
-            (
-                WIDTH,
-                HEIGHT
-            ),
-
-            method=Image.Resampling.LANCZOS,
-
-            centering=(
-                0.5,
-                0.5
-            )
-        )
-
-        img = ImageEnhance.Contrast(
-            img
-        ).enhance(1.04)
-
-        img = ImageEnhance.Color(
-            img
-        ).enhance(1.03)
-
-        img.save(
-
-            target,
-
-            "JPEG",
-
-            quality=94,
-
-            optimize=True
-        )
-
-
-# ============================================================
-# SCENE IMAGE
-# ============================================================
-
-def create_scene_image(
-    scene_index,
-    scene,
-    topic
-):
+def create_scene_image(index, scene):
 
     print(
-        f"\n=== VISUAL SCENE "
-        f"{scene_index} ==="
+        f"\n=== SCENE {index} VISUAL ==="
+    )
+
+    image_path = (
+        WORK /
+        f"scene_{index:02d}.jpg"
     )
 
     candidates = []
 
-    # --------------------------------------------------------
-    # Wikimedia
-    # --------------------------------------------------------
-
-    for query in scene["visual"]:
+    # Search every relevant query
+    for query in scene["queries"]:
 
         print(
             "SEARCH:",
             query
         )
 
-        results = search_wikimedia(
-            query
+        results = wikimedia_search(
+            query,
+            limit=8
         )
-
-        existing = {
-            x["url"]
-            for x in candidates
-        }
 
         for item in results:
 
-            if item["url"] not in existing:
+            score = score_image(
+                item["title"],
+                query
+            )
 
-                candidates.append(
+            candidates.append(
+                (
+                    score,
                     item
                 )
-
-        if len(candidates) >= 12:
-            break
-
-    # --------------------------------------------------------
-    # Wikipedia
-    # --------------------------------------------------------
-
-    if not candidates:
-
-        for query in scene["visual"]:
-
-            print(
-                "WIKIPEDIA:",
-                query
             )
 
-            results = search_wikipedia(
-                query
-            )
-
-            candidates.extend(
-                results
-            )
-
-            if candidates:
-                break
-
-    # --------------------------------------------------------
-    # Topic fallback
-    # --------------------------------------------------------
-
-    if not candidates:
-
-        topic_queries = []
-
-        topic_words = keyword_tokens(
-            topic
-        )
-
-        if topic_words:
-
-            topic_queries.append(
-                " ".join(
-                    topic_words[:4]
-                )
-            )
-
-        for word in topic_words[:5]:
-
-            topic_queries.append(
-                word
-            )
-
-        for query in topic_queries:
-
-            print(
-                "TOPIC SEARCH:",
-                query
-            )
-
-            results = search_wikimedia(
-                query
-            )
-
-            candidates.extend(
-                results
-            )
-
-            if candidates:
-                break
-
-    raw = (
-        WORK /
-        f"scene_{scene_index}_raw.jpg"
+    # Sort best first
+    candidates.sort(
+        key=lambda x: x[0],
+        reverse=True
     )
 
-    final = (
-        WORK /
-        f"scene_{scene_index}.jpg"
-    )
+    # Remove duplicate URLs
+    seen = set()
+    unique = []
 
-    # --------------------------------------------------------
-    # Try several images
-    # --------------------------------------------------------
+    for score, item in candidates:
 
-    if candidates:
+        url = item["url"]
 
-        ranked = sorted(
+        if url in seen:
+            continue
 
-            candidates,
+        seen.add(url)
 
-            key=lambda item:
-            score_image(
-
-                item.get(
-                    "title",
-                    ""
-                ),
-
-                " ".join(
-                    scene["visual"]
-                )
-            ),
-
-            reverse=True
+        unique.append(
+            (
+                score,
+                item
+            )
         )
 
-        attempted = set()
+    # Try all good candidates
+    for score, item in unique:
 
-        for selected in ranked:
+        print(
+            "TRY IMAGE:",
+            item["title"]
+        )
 
-            url = selected.get(
-                "url"
-            )
-
-            if not url:
-                continue
-
-            if url in attempted:
-                continue
-
-            attempted.add(url)
+        if download_image(
+            item["url"],
+            image_path
+        ):
 
             print(
-                "TRY IMAGE:",
-                selected.get(
-                    "title",
-                    ""
-                )
+                "SELECTED:",
+                item["title"]
             )
 
-            if download_image(
+            return image_path
 
-                url,
-
-                raw
-            ):
-
-                try:
-
-                    prepare_image(
-
-                        raw,
-
-                        final
-                    )
-
-                    print(
-                        "VISUAL READY."
-                    )
-
-                    return final
-
-                except Exception as e:
-
-                    print(
-                        "Image preparation failed:",
-                        e
-                    )
-
-                    try:
-
-                        raw.unlink(
-                            missing_ok=True
-                        )
-
-                    except Exception:
-                        pass
-
-    # --------------------------------------------------------
-    # Guaranteed fallback
-    # --------------------------------------------------------
+    # Never kill the video
+    print(
+        "NO VALID IMAGE FOUND."
+    )
 
     print(
-        "No usable external image."
+        "CREATING CINEMATIC FALLBACK."
     )
 
-    fallback = create_fallback_image(
-
-        scene_index,
-
-        topic
+    return create_fallback_image(
+        index,
+        scene["text"]
     )
-
-    prepare_image(
-
-        fallback,
-
-        final
-    )
-
-    return final
 
 
 # ============================================================
-# SCENE AUDIO
+# KEN BURNS / CINEMATIC VIDEO
 # ============================================================
 
-def generate_scene_audios(
-    scenes
+def image_to_video(
+    image,
+    output,
+    duration,
+    index
 ):
 
-    print(
-        "\n=== GENERATING SCENE AUDIO ==="
+    zoom_start = 1.00 + (
+        (index % 3) * 0.015
     )
 
-    audio_files = []
+    zoom_end = zoom_start + 0.07
 
-    for i, scene in enumerate(
-        scenes,
+    frames = max(
+        1,
+        int(duration * FPS)
+    )
+
+    zoom_expression = (
+        f"{zoom_start:.4f}+"
+        f"({zoom_end - zoom_start:.4f})"
+        f"*on/{frames}"
+    )
+
+    vf = (
+        "scale="
+        f"{WIDTH}:"
+        f"{HEIGHT}:"
+        "force_original_aspect_ratio=increase,"
+        f"crop={WIDTH}:{HEIGHT},"
+        f"zoompan=z='{zoom_expression}':"
+        f"d={frames}:"
+        f"s={WIDTH}x{HEIGHT}:"
+        f"fps={FPS},"
+        "eq=contrast=1.03:"
+        "saturation=1.05:"
+        "brightness=-0.01,"
+        "format=yuv420p"
+    )
+
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(image),
+            "-vf",
+            vf,
+            "-t",
+            str(duration),
+            "-r",
+            str(FPS),
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "22",
+            "-pix_fmt",
+            "yuv420p",
+            str(output),
+        ]
+    )
+
+
+# ============================================================
+# BUILD SCENES
+# ============================================================
+
+def build_scene_videos():
+
+    print(
+        "\n=== BUILDING SCENE VIDEOS ==="
+    )
+
+    total_audio_duration = (
+        ffprobe_duration(
+            AUDIO_FINAL
+        )
+    )
+
+    # Allocate time according to text length
+    text_lengths = [
+        len(scene["text"])
+        for scene in SCENES
+    ]
+
+    total_chars = sum(
+        text_lengths
+    )
+
+    scene_files = []
+
+    for index, scene in enumerate(
+        SCENES,
         start=1
     ):
 
-        path = (
+        share = (
+            len(scene["text"])
+            / total_chars
+        )
+
+        duration = (
+            total_audio_duration
+            * share
+        )
+
+        # Keep scenes visually meaningful
+        duration = max(
+            4.0,
+            duration
+        )
+
+        image = create_scene_image(
+            index,
+            scene
+        )
+
+        scene_video = (
             WORK /
-            f"scene_{i}_voice.mp3"
+            f"scene_{index:02d}.mp4"
         )
 
-        if path.exists():
-            path.unlink()
-
-        generate_voice(
-
-            scene["text"],
-
-            path
+        print(
+            f"SCENE {index}: "
+            f"{duration:.2f}s"
         )
 
-        audio_files.append(
-            path
+        image_to_video(
+            image,
+            scene_video,
+            duration,
+            index
         )
 
-    return audio_files
+        scene_files.append(
+            scene_video
+        )
+
+    return scene_files
 
 
 # ============================================================
-# CONCATENATE AUDIO
+# CONCAT
 # ============================================================
 
-def concatenate_audio(
-    audio_files,
-    output
-):
+def concat_scenes(scene_files):
 
     print(
-        "\n=== CONCATENATING AUDIO ==="
+        "\n=== CONCATENATING SCENES ==="
     )
 
-    list_file = (
-        WORK /
-        "audio_list.txt"
+    concat_file = (
+        WORK / "concat.txt"
     )
 
-    with list_file.open(
-        "w",
+    lines = []
+
+    for scene in scene_files:
+
+        safe_path = (
+            scene
+            .resolve()
+            .as_posix()
+        )
+
+        lines.append(
+            f"file '{safe_path}'"
+        )
+
+    concat_file.write_text(
+        "\n".join(lines),
         encoding="utf-8"
-    ) as f:
-
-        for path in audio_files:
-
-            safe = (
-                str(path.resolve())
-                .replace(
-                    "'",
-                    "'\\''"
-                )
-            )
-
-            f.write(
-                f"file '{safe}'\n"
-            )
-
-    run([
-
-        "ffmpeg",
-
-        "-y",
-
-        "-f",
-        "concat",
-
-        "-safe",
-        "0",
-
-        "-i",
-        str(list_file),
-
-        "-c:a",
-        "libmp3lame",
-
-        "-b:a",
-        "192k",
-
-        str(output),
-    ])
-
-    duration = ffprobe_duration(
-        output
     )
 
-    if duration <= 0:
-
-        raise RuntimeError(
-            "Audio concatenation failed."
-        )
-
-    print(
-        f"TOTAL AUDIO: "
-        f"{duration:.2f}s"
+    video_no_audio = (
+        WORK /
+        "video_no_audio.mp4"
     )
+
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
+            "-c",
+            "copy",
+            str(video_no_audio),
+        ]
+    )
+
+    return video_no_audio
 
 
 # ============================================================
-# RENDER SCENE
+# FINAL VIDEO
 # ============================================================
 
-def render_scene(
-    index,
-    image_path,
-    audio_path
+def create_final_video(
+    video_no_audio
 ):
 
     print(
-        f"\n=== RENDERING SCENE "
-        f"{index} ==="
+        "\n=== CREATING FINAL VIDEO ==="
     )
+
+    if VIDEO_FINAL.exists():
+        VIDEO_FINAL.unlink()
+
+    run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_no_audio),
+            "-i",
+            str(AUDIO_FINAL),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            str(VIDEO_FINAL),
+        ]
+    )
+
+    if not VIDEO_FINAL.exists():
+
+        raise RuntimeError(
+            "Final video was not created."
+        )
 
     duration = ffprobe_duration(
-        audio_path
+        VIDEO_FINAL
     )
-
-    if duration <= 0:
-
-        raise RuntimeError(
-            f"Invalid audio duration "
-            f"for scene {index}"
-        )
-
-    output = (
-        WORK /
-        f"scene_{index}.mp4"
-    )
-
-    if index % 2 == 0:
-
-        zoom = (
-
-            "zoompan="
-
-            "z='min(zoom+0.00045,1.12)':"
-
-            "x='iw/2-(iw/zoom/2)':"
-
-            "y='ih/2-(ih/zoom/2)':"
-
-            f"d=1:s="
-            f"{WIDTH}x{HEIGHT}:"
-            f"fps={FPS}"
-        )
-
-    else:
-
-        zoom = (
-
-            "zoompan="
-
-            "z='min(zoom+0.00038,1.10)':"
-
-            "x='iw/2-(iw/zoom/2)':"
-
-            "y='ih/2-(ih/zoom/2)':"
-
-            f"d=1:s="
-            f"{WIDTH}x{HEIGHT}:"
-            f"fps={FPS}"
-        )
-
-    run([
-
-        "ffmpeg",
-
-        "-y",
-
-        "-loop",
-        "1",
-
-        "-i",
-        str(image_path),
-
-        "-i",
-        str(audio_path),
-
-        "-vf",
-        zoom,
-
-        "-t",
-        f"{duration:.3f}",
-
-        "-r",
-        str(FPS),
-
-        "-c:v",
-        "libx264",
-
-        "-preset",
-        "veryfast",
-
-        "-crf",
-        "20",
-
-        "-pix_fmt",
-        "yuv420p",
-
-        "-c:a",
-        "aac",
-
-        "-b:a",
-        "192k",
-
-        "-shortest",
-
-        str(output),
-    ])
-
-    actual = ffprobe_duration(
-        output
-    )
-
-    if actual <= 0:
-
-        raise RuntimeError(
-            f"Scene {index} rendering failed."
-        )
-
-    return output
-
-
-# ============================================================
-# CONCATENATE VIDEO
-# ============================================================
-
-def concatenate_video(
-    scene_videos
-):
-
-    print(
-        "\n=== BUILDING FINAL VIDEO ==="
-    )
-
-    list_file = (
-        WORK /
-        "video_list.txt"
-    )
-
-    with list_file.open(
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        for path in scene_videos:
-
-            safe = (
-                str(path.resolve())
-                .replace(
-                    "'",
-                    "'\\''"
-                )
-            )
-
-            f.write(
-                f"file '{safe}'\n"
-            )
-
-    temp_video = (
-        WORK /
-        "video_concat.mp4"
-    )
-
-    run([
-
-        "ffmpeg",
-
-        "-y",
-
-        "-f",
-        "concat",
-
-        "-safe",
-        "0",
-
-        "-i",
-        str(list_file),
-
-        "-c",
-        "copy",
-
-        str(temp_video),
-    ])
-
-    return temp_video
-
-
-# ============================================================
-# FINAL MUX
-# ============================================================
-
-def mux_final_video(
-    video_file
-):
-
-    print(
-        "\n=== FINAL VIDEO MUX ==="
-    )
-
-    if VIDEO_PATH.exists():
-        VIDEO_PATH.unlink()
-
-    run([
-
-        "ffmpeg",
-
-        "-y",
-
-        "-i",
-        str(video_file),
-
-        "-i",
-        str(AUDIO_FINAL),
-
-        "-map",
-        "0:v:0",
-
-        "-map",
-        "1:a:0",
-
-        "-c:v",
-        "copy",
-
-        "-c:a",
-        "aac",
-
-        "-b:a",
-        "192k",
-
-        "-movflags",
-        "+faststart",
-
-        "-shortest",
-
-        str(VIDEO_PATH),
-    ])
-
-    duration = ffprobe_duration(
-        VIDEO_PATH
-    )
-
-    if duration <= 0:
-
-        raise RuntimeError(
-            "Final video duration is invalid."
-        )
 
     size_mb = (
-
-        VIDEO_PATH.stat().st_size
-
+        VIDEO_FINAL.stat().st_size
         / 1024
-
         / 1024
     )
 
     print(
-        f"\nFINAL VIDEO: "
-        f"{duration:.2f}s"
+        "\n=============================="
     )
 
     print(
-        f"FINAL SIZE: "
-        f"{size_mb:.2f} MB"
+        "FINAL VIDEO READY"
+    )
+
+    print(
+        f"DURATION: {duration:.2f}s"
+    )
+
+    print(
+        f"SIZE: {size_mb:.2f} MB"
+    )
+
+    print(
+        "=============================="
     )
 
     if size_mb > 45:
 
-        raise RuntimeError(
-            f"Final video is too large: "
-            f"{size_mb:.2f} MB"
+        print(
+            "WARNING: VIDEO ABOVE 45 MB"
         )
+
+    return VIDEO_FINAL
 
 
 # ============================================================
@@ -2014,253 +1214,47 @@ def mux_final_video(
 def main():
 
     print(
-        "=" * 60
+        """
+========================================================
+ACURIVO — CRISTIANO RONALDO LEGEND STORY
+========================================================
+"""
     )
 
-    print(
-        "ACURIVO VIDEO FACTORY - PRODUCTION V1"
+    clean_workspace()
+
+    # 1
+    script = build_script()
+
+    # 2
+    create_voice(
+        script
     )
 
-    print(
-        "=" * 60
-    )
-
-    # --------------------------------------------------------
-    # 1. Discover topic
-    # --------------------------------------------------------
-
-    topic = discover_topic()
-
-    # --------------------------------------------------------
-    # 2. Build script
-    # --------------------------------------------------------
-
-    scenes = build_script(
-        topic
-    )
-
-    print(
-        "\n=== SCRIPT ==="
-    )
-
-    full_text = []
-
-    for i, scene in enumerate(
-        scenes,
-        start=1
-    ):
-
-        print(
-            f"\nSCENE {i}:"
-        )
-
-        print(
-            scene["text"]
-        )
-
-        full_text.append(
-            scene["text"]
-        )
-
-    script_text = (
-        "\n\n".join(
-            full_text
-        )
-    )
-
-    (
-        WORK /
-        "script.txt"
-    ).write_text(
-
-        script_text,
-
-        encoding="utf-8"
-    )
-
-    # --------------------------------------------------------
-    # 3. Generate voices
-    # --------------------------------------------------------
-
-    scene_audios = (
-        generate_scene_audios(
-            scenes
-        )
-    )
-
-    # --------------------------------------------------------
-    # 4. Master audio
-    # --------------------------------------------------------
-
-    concatenate_audio(
-
-        scene_audios,
-
-        AUDIO_RAW
-    )
-
+    # 3
     master_audio()
 
-    # --------------------------------------------------------
-    # 5. Create visuals
-    # --------------------------------------------------------
+    # 4
+    scene_files = (
+        build_scene_videos()
+    )
 
-    scene_images = []
-
-    for i, scene in enumerate(
-        scenes,
-        start=1
-    ):
-
-        image = create_scene_image(
-
-            i,
-
-            scene,
-
-            topic
-        )
-
-        scene_images.append(
-            image
-        )
-
-    # --------------------------------------------------------
-    # 6. Render scenes
-    # --------------------------------------------------------
-
-    scene_videos = []
-
-    for i, (
-        image,
-        audio
-    ) in enumerate(
-
-        zip(
-            scene_images,
-            scene_audios
-        ),
-
-        start=1
-    ):
-
-        video = render_scene(
-
-            i,
-
-            image,
-
-            audio
-        )
-
-        scene_videos.append(
-            video
-        )
-
-    # --------------------------------------------------------
-    # 7. Concatenate scenes
-    # --------------------------------------------------------
-
-    concat_video = (
-        concatenate_video(
-            scene_videos
+    # 5
+    video_no_audio = (
+        concat_scenes(
+            scene_files
         )
     )
 
-    # --------------------------------------------------------
-    # 8. Final mux
-    # --------------------------------------------------------
-
-    mux_final_video(
-        concat_video
-    )
-
-    # --------------------------------------------------------
-    # 9. Final verification
-    # --------------------------------------------------------
-
-    final_duration = (
-        ffprobe_duration(
-            VIDEO_PATH
-        )
-    )
-
-    final_size = (
-
-        VIDEO_PATH.stat().st_size
-
-        / 1024
-
-        / 1024
+    # 6
+    create_final_video(
+        video_no_audio
     )
 
     print(
-        "\n" +
-        "=" * 60
+        "\nACURIVO RONALDO VIDEO COMPLETE."
     )
 
-    print(
-        "ACURIVO VIDEO READY"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    print(
-        f"TOPIC: {topic}"
-    )
-
-    print(
-        f"DURATION: "
-        f"{final_duration:.2f}s"
-    )
-
-    print(
-        f"SIZE: "
-        f"{final_size:.2f} MB"
-    )
-
-    print(
-        f"FILE: {VIDEO_PATH}"
-    )
-
-    if final_duration < 30:
-
-        raise RuntimeError(
-            "Final video is unexpectedly short."
-        )
-
-    if final_size > 45:
-
-        raise RuntimeError(
-            f"Final video is too large: "
-            f"{final_size:.2f} MB"
-        )
-
-    print(
-        "\nSUCCESS."
-    )
-
-
-# ============================================================
-# START
-# ============================================================
 
 if __name__ == "__main__":
-
-    try:
-
-        main()
-
-    except Exception as e:
-
-        print(
-            "\nFATAL ERROR:"
-        )
-
-        print(
-            str(e)
-        )
-
-        sys.exit(1)
+    main()
