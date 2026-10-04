@@ -1,5 +1,6 @@
 import asyncio
-import json
+import base64
+import io
 import math
 import os
 import re
@@ -17,7 +18,8 @@ from PIL import Image, ImageOps, ImageFilter
 
 # ============================================================
 # ACURIVO VIDEO FACTORY
-# RONALDO STORY — SAUDI ARABIC / DYNAMIC VISUAL ENGINE
+# RONALDO EDITION
+# SAUDI ARABIC + DYNAMIC VISUAL ENGINE
 # ============================================================
 
 BASE = Path(__file__).resolve().parent
@@ -34,31 +36,33 @@ VOICE = "ar-SA-HamedNeural"
 VOICE_RATE = "-3%"
 VOICE_PITCH = "-1Hz"
 
-VIDEO_WIDTH = 1920
-VIDEO_HEIGHT = 1080
+WIDTH = 1920
+HEIGHT = 1080
 FPS = 30
 
 MAX_VIDEO_MB = 45
 
 IMAGE_TIMEOUT = 20
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
-IMAGE_MIN_BYTES = 12 * 1024
+MIN_IMAGE_BYTES = 10 * 1024
 
 USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) "
+    "Mozilla/5.0 "
+    "(X11; Linux x86_64) "
     "AppleWebKit/537.36 "
     "(KHTML, like Gecko) "
     "Chrome/125 Safari/537.36 "
-    "ACURIVO-VideoFactory/1.0"
+    "ACURIVO Video Factory"
 )
 
 SESSION = requests.Session()
+
 SESSION.headers.update({
     "User-Agent": USER_AGENT,
-    "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+    "Accept": "*/*",
 })
 
-USED_IMAGE_URLS = set()
+USED_IMAGES = set()
 
 
 # ============================================================
@@ -68,273 +72,274 @@ USED_IMAGE_URLS = set()
 STORY = [
 
     {
-        "text": (
-            "تخيل معاي طفل صغير في جزيرة ماديرا، "
+        "text":
+            "تخيل معاي طفل صغير في جزيرة ماديرا. "
             "ما عنده شهرة، ولا فلوس، ولا أحد يعرف اسمه. "
-            "لكن عنده شيء واحد ما كان ينقصه أبدًا... الإصرار."
-        ),
+            "لكن عنده شيء واحد ما كان ينقصه أبدًا... الإصرار.",
+
         "queries": [
-            "Cristiano Ronaldo childhood Madeira",
-            "Cristiano Ronaldo young Madeira",
-            "Funchal Madeira football childhood",
-            "Cristiano Ronaldo childhood football"
+            "Cristiano Ronaldo childhood",
+            "Cristiano Ronaldo young",
+            "Cristiano Ronaldo Madeira",
+            "Ronaldo youth football",
         ],
     },
 
     {
-        "text": (
+        "text":
             "هذا الطفل كان اسمه كريستيانو رونالدو. "
-            "ومن وهو صغير، كان واضح إنه يتعامل مع الكورة بطريقة مختلفة عن الباقين."
-        ),
+            "ومن وهو صغير، كان واضح إنه يتعامل مع الكورة بطريقة مختلفة عن الباقين.",
+
         "queries": [
             "Cristiano Ronaldo young football",
-            "Cristiano Ronaldo childhood football Portugal",
-            "Cristiano Ronaldo young Sporting",
-            "Ronaldo youth football"
+            "Cristiano Ronaldo childhood football",
+            "Ronaldo young football Portugal",
+            "Cristiano Ronaldo youth",
         ],
     },
 
     {
-        "text": (
+        "text":
             "وعمره تقريبًا إحدى عشر سنة، أخذ قرار صعب جدًا. "
-            "ترك ماديرا وراح للبرتغال عشان يلعب ويتدرب في سبورتينغ لشبونة."
-        ),
+            "ترك ماديرا وراح للبرتغال عشان يلعب ويتدرب في سبورتينغ لشبونة.",
+
         "queries": [
             "Cristiano Ronaldo Sporting Lisbon youth",
             "Cristiano Ronaldo Sporting CP academy",
-            "Sporting Lisbon academy Ronaldo",
-            "Cristiano Ronaldo Lisbon young"
+            "Ronaldo Sporting Lisbon",
+            "Sporting CP Ronaldo academy",
         ],
     },
 
     {
-        "text": (
+        "text":
             "القرار هذا كان يعني إنه يبعد عن أهله وحياته اللي يعرفها، "
-            "ويبدأ من الصفر في مكان جديد."
-        ),
+            "ويبدأ من الصفر في مكان جديد.",
+
         "queries": [
-            "Cristiano Ronaldo Sporting academy young",
-            "Sporting CP academy Lisbon",
-            "Cristiano Ronaldo youth academy",
-            "Sporting Lisbon training ground"
+            "Cristiano Ronaldo Sporting academy",
+            "Sporting Lisbon academy",
+            "Cristiano Ronaldo Lisbon young",
+            "Ronaldo Sporting training",
         ],
     },
 
     {
-        "text": (
+        "text":
             "لكن رونالدو ما راح هناك عشان يكون لاعب عادي. "
-            "كان يتدرب، ويتطور، وكل يوم يحاول يثبت إنه يستاهل فرصته."
-        ),
+            "كان يتدرب، ويتطور، وكل يوم يحاول يثبت إنه يستاهل فرصته.",
+
         "queries": [
-            "Cristiano Ronaldo Sporting training",
             "Cristiano Ronaldo training young",
-            "Sporting CP training Ronaldo",
-            "Cristiano Ronaldo academy training"
+            "Cristiano Ronaldo Sporting training",
+            "Ronaldo training football",
+            "Cristiano Ronaldo academy",
         ],
     },
 
     {
-        "text": (
+        "text":
             "وبعمر سبعة عشر سنة، جاءت لحظة مهمة جدًا. "
-            "رونالدو لعب مع الفريق الأول لسبورتينغ، وبدأ اسمه يلفت الأنظار."
-        ),
+            "رونالدو لعب مع الفريق الأول لسبورتينغ، وبدأ اسمه يلفت الأنظار.",
+
         "queries": [
-            "Cristiano Ronaldo Sporting first team 2002",
+            "Cristiano Ronaldo Sporting debut",
             "Cristiano Ronaldo Sporting 2002",
-            "Ronaldo Sporting debut",
-            "Cristiano Ronaldo Sporting CP match"
+            "Ronaldo Sporting CP 2002",
+            "Cristiano Ronaldo first team Sporting",
         ],
     },
 
     {
-        "text": (
+        "text":
             "وبعدها بسنة تقريبًا، تغير كل شيء. "
-            "في مباراة ودية أمام مانشستر يونايتد، اللاعبون والمدرب شافوا شيء مختلف تمامًا."
-        ),
+            "في مباراة ودية أمام مانشستر يونايتد، الناس شافوا شيء مختلف تمامًا.",
+
         "queries": [
-            "Cristiano Ronaldo Manchester United Sporting 2003",
-            "Ronaldo Sporting Manchester United 2003",
-            "Cristiano Ronaldo 2003 Manchester United",
-            "Ronaldo first Manchester United match"
+            "Cristiano Ronaldo Sporting Manchester United 2003",
+            "Ronaldo Manchester United 2003",
+            "Cristiano Ronaldo Manchester United young",
+            "Ronaldo Sporting Manchester United",
         ],
     },
 
     {
-        "text": (
+        "text":
             "السير أليكس فيرغسون اقتنع إنه قدامه موهبة تستاهل الاستثمار. "
-            "وهنا بدأ فصل جديد في حياة رونالدو."
-        ),
+            "وهنا بدأ فصل جديد في حياة رونالدو.",
+
         "queries": [
-            "Alex Ferguson Cristiano Ronaldo 2003",
-            "Cristiano Ronaldo Ferguson Manchester United",
+            "Alex Ferguson Cristiano Ronaldo",
+            "Ferguson Ronaldo Manchester United",
+            "Cristiano Ronaldo Ferguson 2003",
             "Ronaldo Manchester United signing",
-            "Cristiano Ronaldo Manchester United young"
         ],
     },
 
     {
-        "text": (
+        "text":
             "راح رونالدو إلى مانشستر يونايتد، وهناك لبس القميص رقم سبعة. "
-            "رقم كان له وزن كبير، وكان لازم يثبت إنه يستحقه."
-        ),
+            "رقم كان له وزن كبير، وكان لازم يثبت إنه يستحقه.",
+
         "queries": [
             "Cristiano Ronaldo Manchester United number 7",
-            "Ronaldo Manchester United 2003 number 7",
-            "Cristiano Ronaldo Manchester United young 7",
-            "Ronaldo Old Trafford 2003"
+            "Ronaldo Manchester United 7",
+            "Cristiano Ronaldo Old Trafford",
+            "Ronaldo Manchester United young",
         ],
     },
 
     {
-        "text": (
+        "text":
             "في البداية، كان عنده مهارة وسرعة، لكن جسمه كان يحتاج وقت عشان يتطور. "
-            "وفِرغسون وفريقه اشتغلوا معه خطوة خطوة."
-        ),
+            "وفِرغسون وفريقه اشتغلوا معه خطوة خطوة.",
+
         "queries": [
             "Cristiano Ronaldo Manchester United training",
-            "Cristiano Ronaldo gym Manchester United",
-            "Ronaldo training Ferguson",
-            "Cristiano Ronaldo early Manchester United"
+            "Ronaldo Manchester United training",
+            "Cristiano Ronaldo gym",
+            "Ronaldo Ferguson training",
         ],
     },
 
     {
-        "text": (
+        "text":
             "وبعدين بدأ الانفجار الحقيقي. "
-            "رونالدو صار أقوى، أسرع، وأخطر قدام المرمى."
-        ),
+            "رونالدو صار أقوى، أسرع، وأخطر قدام المرمى.",
+
         "queries": [
             "Cristiano Ronaldo Manchester United goal",
-            "Ronaldo Manchester United 2007",
-            "Cristiano Ronaldo 2008 Manchester United",
-            "Ronaldo Old Trafford goal"
+            "Ronaldo Manchester United goal",
+            "Cristiano Ronaldo 2007",
+            "Ronaldo Old Trafford goal",
         ],
     },
 
     {
-        "text": (
+        "text":
             "في موسم ألفين وسبعة إلى ألفين وثمانية، وصل لمستوى مختلف تمامًا. "
-            "أهداف كثيرة، مباريات كبيرة، وحضور يخليك تعرف إن اللاعب هذا مو عادي."
-        ),
+            "أهداف كثيرة، مباريات كبيرة، وحضور يخليك تعرف إن اللاعب هذا مو عادي.",
+
         "queries": [
-            "Cristiano Ronaldo 2007 2008 Manchester United",
-            "Ronaldo 2008 Champions League",
-            "Cristiano Ronaldo 2008 trophy",
-            "Ronaldo Manchester United 2008 celebration"
+            "Cristiano Ronaldo 2007 2008",
+            "Ronaldo Manchester United 2008",
+            "Cristiano Ronaldo Champions League 2008",
+            "Ronaldo 2008 football",
         ],
     },
 
     {
-        "text": (
+        "text":
             "فاز بدوري أبطال أوروبا مع مانشستر يونايتد، "
-            "وفاز بالكرة الذهبية لأول مرة في مسيرته."
-        ),
+            "وفاز بالكرة الذهبية لأول مرة في مسيرته.",
+
         "queries": [
-            "Cristiano Ronaldo 2008 Ballon d'Or",
-            "Cristiano Ronaldo 2008 Champions League trophy",
-            "Ronaldo Manchester United Champions League 2008",
-            "Cristiano Ronaldo Ballon d'Or 2008"
+            "Cristiano Ronaldo Champions League 2008",
+            "Cristiano Ronaldo Ballon d'Or 2008",
+            "Ronaldo Manchester United trophy",
+            "Ronaldo 2008 trophy",
         ],
     },
 
     {
-        "text": (
+        "text":
             "لكن طموحه ما وقف هنا. "
-            "في ألفين وتسعة، انتقل لريال مدريد، وبدأت واحدة من أعظم مراحل مسيرته."
-        ),
+            "في ألفين وتسعة، انتقل لريال مدريد، وبدأت واحدة من أعظم مراحل مسيرته.",
+
         "queries": [
-            "Cristiano Ronaldo Real Madrid presentation 2009",
-            "Ronaldo Real Madrid 2009",
-            "Cristiano Ronaldo Santiago Bernabeu 2009",
-            "Ronaldo Real Madrid signing 2009"
+            "Cristiano Ronaldo Real Madrid 2009",
+            "Ronaldo Real Madrid presentation",
+            "Cristiano Ronaldo Real Madrid signing",
+            "Ronaldo Santiago Bernabeu 2009",
         ],
     },
 
     {
-        "text": (
+        "text":
             "في مدريد، رونالدو ما اكتفى إنه يحافظ على مستواه. "
-            "كان كل موسم تقريبًا يحاول يكسر رقم جديد، ويسجل أكثر، ويفوز أكثر."
-        ),
+            "كان كل موسم تقريبًا يحاول يكسر رقم جديد، ويسجل أكثر، ويفوز أكثر.",
+
         "queries": [
             "Cristiano Ronaldo Real Madrid goal",
             "Cristiano Ronaldo Real Madrid celebration",
             "Ronaldo Real Madrid Champions League",
-            "Cristiano Ronaldo Real Madrid training"
+            "Cristiano Ronaldo Real Madrid match",
         ],
     },
 
     {
-        "text": (
-            "صار هداف، وصار رمز للفريق، وصار واحد من أكثر اللاعبين تأثيرًا في تاريخ النادي."
-        ),
+        "text":
+            "صار هداف، وصار رمز للفريق، وصار واحد من أكثر اللاعبين تأثيرًا في تاريخ النادي.",
+
         "queries": [
-            "Cristiano Ronaldo Real Madrid captain",
             "Cristiano Ronaldo Real Madrid legend",
-            "Ronaldo Real Madrid trophy",
-            "Cristiano Ronaldo Real Madrid celebration"
+            "Cristiano Ronaldo Real Madrid trophy",
+            "Ronaldo Real Madrid celebration",
+            "Cristiano Ronaldo Real Madrid",
         ],
     },
 
     {
-        "text": (
+        "text":
             "لكن السر الحقيقي في قصة رونالدو مو بس الموهبة. "
-            "السر في التدريب، والانضباط، والقدرة على الاستمرار حتى بعد ما يوصل للقمة."
-        ),
+            "السر في التدريب، والانضباط، والقدرة على الاستمرار حتى بعد ما يوصل للقمة.",
+
         "queries": [
-            "Cristiano Ronaldo training Real Madrid",
-            "Cristiano Ronaldo gym training",
-            "Ronaldo workout training",
-            "Cristiano Ronaldo fitness"
+            "Cristiano Ronaldo training",
+            "Ronaldo gym training",
+            "Cristiano Ronaldo workout",
+            "Cristiano Ronaldo fitness",
         ],
     },
 
     {
-        "text": (
+        "text":
             "من طفل في ماديرا، إلى لاعب صغير في سبورتينغ، "
-            "إلى نجم في مانشستر يونايتد، وبعدها أسطورة في ريال مدريد."
-        ),
+            "إلى نجم في مانشستر يونايتد، وبعدها أسطورة في ريال مدريد.",
+
         "queries": [
-            "Cristiano Ronaldo Madeira Sporting Manchester Real Madrid",
-            "Cristiano Ronaldo career montage",
             "Cristiano Ronaldo career",
-            "Ronaldo Manchester United Real Madrid"
+            "Cristiano Ronaldo Sporting Manchester Real Madrid",
+            "Ronaldo career",
+            "Cristiano Ronaldo football",
         ],
     },
 
     {
-        "text": (
-            "قصة رونالدو تذكرنا بشيء بسيط جدًا: "
-            "الموهبة ممكن تفتح لك الباب، لكن الاستمرار هو اللي يخليك تبقى في القمة."
-        ),
+        "text":
+            "قصة رونالدو تذكرنا بشيء بسيط جدًا. "
+            "الموهبة ممكن تفتح لك الباب، لكن الاستمرار هو اللي يخليك تبقى في القمة.",
+
         "queries": [
             "Cristiano Ronaldo celebration",
-            "Cristiano Ronaldo trophy celebration",
-            "Cristiano Ronaldo football stadium",
-            "Cristiano Ronaldo iconic"
+            "Cristiano Ronaldo trophy",
+            "Ronaldo football stadium",
+            "Cristiano Ronaldo iconic",
         ],
     },
 
     {
-        "text": (
-            "وهذا هو رونالدو... "
-            "طفل كان يحلم، وكبر وهو يطارد حلمه، لين صار اسمه واحد من أشهر الأسماء في تاريخ كرة القدم."
-        ),
+        "text":
+            "وهذا هو رونالدو. "
+            "طفل كان يحلم، وكبر وهو يطارد حلمه، لين صار اسمه واحد من أشهر الأسماء في تاريخ كرة القدم.",
+
         "queries": [
-            "Cristiano Ronaldo iconic celebration",
             "Cristiano Ronaldo Portugal",
-            "Cristiano Ronaldo football legend",
-            "Cristiano Ronaldo portrait"
+            "Cristiano Ronaldo legend",
+            "Cristiano Ronaldo iconic",
+            "Cristiano Ronaldo football",
         ],
     },
 ]
 
 
 # ============================================================
-# UTILITIES
+# COMMAND
 # ============================================================
 
 def run(cmd, check=True, capture=False):
-    print("\nRUN:", " ".join(str(x) for x in cmd))
+
+    print("\nRUN:", " ".join(map(str, cmd)))
 
     return subprocess.run(
         [str(x) for x in cmd],
@@ -345,7 +350,8 @@ def run(cmd, check=True, capture=False):
     )
 
 
-def ffprobe_duration(path):
+def duration(path):
+
     result = subprocess.run(
         [
             "ffprobe",
@@ -365,51 +371,63 @@ def ffprobe_duration(path):
     return float(result.stdout.strip())
 
 
-def clean_text(text):
-    text = re.sub(r"\s+", " ", text)
-    text = text.replace("…", "...")
-    return text.strip()
-
-
 # ============================================================
 # VOICE
 # ============================================================
 
 async def make_voice_async(text, output):
+
     communicate = edge_tts.Communicate(
-        text=clean_text(text),
+        text=text,
         voice=VOICE,
         rate=VOICE_RATE,
         pitch=VOICE_PITCH,
     )
 
-    await communicate.save(str(output))
+    await communicate.save(
+        str(output)
+    )
 
 
 def make_voice(text, output):
-    print("\nCREATING SAUDI ARABIC VOICE...")
+
+    print("\nVOICE:")
     print(text)
 
     asyncio.run(
-        make_voice_async(text, output)
+        make_voice_async(
+            text,
+            output
+        )
     )
 
-    if not output.exists() or output.stat().st_size < 5000:
-        raise RuntimeError("Voice generation failed.")
+    if (
+        not output.exists()
+        or output.stat().st_size < 5000
+    ):
+        raise RuntimeError(
+            "Voice generation failed."
+        )
 
-    duration = ffprobe_duration(output)
+    d = duration(output)
 
-    print(f"VOICE DURATION: {duration:.2f}s")
+    print(
+        f"VOICE DURATION: {d:.2f}s"
+    )
 
-    return duration
+    return d
 
 
 # ============================================================
-# WIKIMEDIA SEARCH
+# WIKIMEDIA
 # ============================================================
 
-def search_wikimedia(query, limit=12):
-    api = "https://commons.wikimedia.org/w/api.php"
+def wikimedia_search(query, limit=20):
+
+    url = (
+        "https://commons.wikimedia.org/"
+        "w/api.php"
+    )
 
     params = {
         "action": "query",
@@ -424,8 +442,9 @@ def search_wikimedia(query, limit=12):
     }
 
     try:
+
         response = SESSION.get(
-            api,
+            url,
             params=params,
             timeout=IMAGE_TIMEOUT,
         )
@@ -434,63 +453,87 @@ def search_wikimedia(query, limit=12):
 
         data = response.json()
 
-        pages = data.get("query", {}).get("pages", {})
+        pages = (
+            data
+            .get("query", {})
+            .get("pages", {})
+        )
 
         results = []
 
         for page in pages.values():
 
-            title = page.get("title", "")
-
-            info = page.get("imageinfo", [])
-
-            if not info:
-                continue
-
-            image = info[0]
-
-            url = (
-                image.get("thumburl")
-                or image.get("url")
+            title = page.get(
+                "title",
+                ""
             )
 
-            if not url:
+            infos = page.get(
+                "imageinfo",
+                []
+            )
+
+            if not infos:
                 continue
 
-            mime = image.get("mime", "")
+            info = infos[0]
 
-            if not mime.startswith("image/"):
+            image_url = (
+                info.get("thumburl")
+                or info.get("url")
+            )
+
+            if not image_url:
                 continue
 
-            lower_title = title.lower()
+            mime = (
+                info.get("mime", "")
+                .lower()
+            )
 
-            blocked = [
+            if not mime.startswith(
+                "image/"
+            ):
+                continue
+
+            lower = title.lower()
+
+            forbidden = [
                 ".svg",
                 ".gif",
                 "logo",
                 "flag",
                 "icon",
+                "poster",
                 "jersey",
-                "card",
                 "illustration",
                 "painting",
-                "poster",
                 "statue",
                 "sculpture",
             ]
 
-            if any(x in lower_title for x in blocked):
+            if any(
+                word in lower
+                for word in forbidden
+            ):
                 continue
 
-            width = image.get("width", 0) or 0
-            height = image.get("height", 0) or 0
+            width = info.get(
+                "width",
+                0
+            ) or 0
 
-            if width < 500 or height < 400:
+            height = info.get(
+                "height",
+                0
+            ) or 0
+
+            if width < 400 or height < 300:
                 continue
 
             results.append({
                 "title": title,
-                "url": url,
+                "url": image_url,
                 "width": width,
                 "height": height,
             })
@@ -498,23 +541,134 @@ def search_wikimedia(query, limit=12):
         return results
 
     except Exception as e:
-        print("WIKIMEDIA SEARCH ERROR:", e)
+
+        print(
+            "WIKIMEDIA ERROR:",
+            e
+        )
+
         return []
 
 
 # ============================================================
-# IMAGE DOWNLOAD
+# WIKIPEDIA PAGE IMAGE FALLBACK
 # ============================================================
 
-def download_image(url, output):
+def wikipedia_image():
+
+    url = (
+        "https://en.wikipedia.org/"
+        "w/api.php"
+    )
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "prop": "pageimages",
+        "piprop": "original",
+        "titles": "Cristiano Ronaldo",
+    }
 
     try:
 
         response = SESSION.get(
             url,
-            headers={
-                "User-Agent": USER_AGENT,
-            },
+            params=params,
+            timeout=IMAGE_TIMEOUT,
+        )
+
+        response.raise_for_status()
+
+        pages = (
+            response.json()
+            .get("query", {})
+            .get("pages", {})
+        )
+
+        for page in pages.values():
+
+            original = page.get(
+                "original"
+            )
+
+            if original:
+
+                return {
+                    "title":
+                        "Cristiano Ronaldo Wikipedia",
+                    "url":
+                        original.get("source"),
+                }
+
+    except Exception as e:
+
+        print(
+            "WIKIPEDIA ERROR:",
+            e
+        )
+
+    return None
+
+
+# ============================================================
+# SCORE
+# ============================================================
+
+def score_result(
+    title,
+    query
+):
+
+    title = title.lower()
+
+    words = re.findall(
+        r"[a-z0-9]+",
+        query.lower()
+    )
+
+    score = 0
+
+    for word in words:
+
+        if len(word) > 2 and word in title:
+            score += 4
+
+    strong_words = [
+        "ronaldo",
+        "cristiano",
+        "sporting",
+        "madrid",
+        "united",
+        "manchester",
+        "portugal",
+        "madeira",
+        "football",
+        "soccer",
+        "champions",
+        "ballon",
+    ]
+
+    for word in strong_words:
+
+        if word in title:
+            score += 3
+
+    return score
+
+
+# ============================================================
+# DOWNLOAD
+# ============================================================
+
+def download_image(
+    url,
+    output
+):
+
+    try:
+
+        response = SESSION.get(
+            url,
             timeout=(5, IMAGE_TIMEOUT),
             stream=True,
             allow_redirects=True,
@@ -524,35 +678,28 @@ def download_image(url, output):
 
         content_type = (
             response.headers
-            .get("Content-Type", "")
+            .get(
+                "Content-Type",
+                ""
+            )
             .lower()
         )
 
-        if not content_type.startswith("image/"):
-            raise RuntimeError(
-                f"Invalid content type: {content_type}"
+        if (
+            content_type
+            and not content_type.startswith(
+                "image/"
             )
+        ):
 
-        content_length = response.headers.get(
-            "Content-Length"
-        )
-
-        if content_length:
-
-            try:
-
-                if int(content_length) > MAX_IMAGE_BYTES:
-                    raise RuntimeError(
-                        "Image exceeds maximum size."
-                    )
-
-            except ValueError:
-                pass
+            raise RuntimeError(
+                "Not an image."
+            )
 
         data = bytearray()
 
         for chunk in response.iter_content(
-            chunk_size=64 * 1024
+            chunk_size=65536
         ):
 
             if not chunk:
@@ -561,11 +708,13 @@ def download_image(url, output):
             data.extend(chunk)
 
             if len(data) > MAX_IMAGE_BYTES:
+
                 raise RuntimeError(
-                    "Image exceeds maximum size."
+                    "Image too large."
                 )
 
-        if len(data) < IMAGE_MIN_BYTES:
+        if len(data) < MIN_IMAGE_BYTES:
+
             raise RuntimeError(
                 "Image too small."
             )
@@ -575,21 +724,24 @@ def download_image(url, output):
         )
 
         with Image.open(output) as img:
+
             img.verify()
 
         with Image.open(output) as img:
+
             img.load()
 
-            width, height = img.size
+            w, h = img.size
 
-            if width < 300 or height < 300:
+            if w < 300 or h < 250:
+
                 raise RuntimeError(
-                    "Image resolution too small."
+                    "Resolution too small."
                 )
 
         print(
-            f"IMAGE OK: "
-            f"{len(data) / 1024 / 1024:.2f} MB"
+            "IMAGE OK:",
+            f"{len(data)/1024/1024:.2f} MB"
         )
 
         return True
@@ -597,113 +749,120 @@ def download_image(url, output):
     except Exception as e:
 
         print(
-            "Image download failed:",
+            "IMAGE FAILED:",
             e
         )
 
-        try:
-            output.unlink(
-                missing_ok=True
-            )
-        except Exception:
-            pass
+        output.unlink(
+            missing_ok=True
+        )
 
         return False
 
 
 # ============================================================
-# IMAGE RELEVANCE
+# FIND VISUALS
 # ============================================================
 
-def score_image(title, query):
-
-    title_l = title.lower()
-    query_words = [
-        x.lower()
-        for x in re.findall(
-            r"[A-Za-z0-9]+",
-            query
-        )
-        if len(x) > 2
-    ]
-
-    score = 0
-
-    for word in query_words:
-
-        if word in title_l:
-            score += 5
-
-    important = [
-        "ronaldo",
-        "cristiano",
-        "sporting",
-        "madrid",
-        "united",
-        "football",
-        "soccer",
-        "manchester",
-        "portugal",
-        "madeira",
-        "champions",
-        "ballon",
-        "real madrid",
-    ]
-
-    for word in important:
-
-        if word in title_l:
-            score += 4
-
-    bad = [
-        "logo",
-        "flag",
-        "poster",
-        "illustration",
-        "painting",
-        "statue",
-    ]
-
-    for word in bad:
-
-        if word in title_l:
-            score -= 20
-
-    return score
-
-
-# ============================================================
-# FIND MULTIPLE UNIQUE VISUALS
-# ============================================================
-
-def find_visuals(queries, count, scene_index):
+def find_visuals(
+    queries,
+    count,
+    scene_index
+):
 
     print(
-        f"\nSEARCHING {count} VISUALS "
-        f"FOR SCENE {scene_index}..."
+        "\n"
+        + "-" * 60
+    )
+
+    print(
+        f"VISUAL SEARCH — SCENE {scene_index}"
+    )
+
+    print(
+        "-" * 60
     )
 
     candidates = []
 
+    # --------------------------------------------------------
+    # Search every query
+    # --------------------------------------------------------
+
     for query in queries:
 
-        print("SEARCH:", query)
-
-        results = search_wikimedia(
-            query,
-            limit=15
+        print(
+            "SEARCH:",
+            query
         )
 
-        for item in results:
+        results = wikimedia_search(
+            query,
+            limit=20
+        )
 
-            item["score"] = score_image(
-                item["title"],
+        print(
+            "RESULTS:",
+            len(results)
+        )
+
+        for result in results:
+
+            result["score"] = score_result(
+                result["title"],
                 query
             )
 
-            candidates.append(item)
+            candidates.append(
+                result
+            )
 
-    # Deduplicate URLs
+    # --------------------------------------------------------
+    # If specific searches fail,
+    # broaden search automatically
+    # --------------------------------------------------------
+
+    if len(candidates) < count:
+
+        print(
+            "SPECIFIC SEARCH WEAK."
+        )
+
+        fallback_queries = [
+            "Cristiano Ronaldo",
+            "Ronaldo football",
+            "Cristiano Ronaldo Portugal",
+            "Cristiano Ronaldo Real Madrid",
+            "Cristiano Ronaldo Manchester United",
+        ]
+
+        for query in fallback_queries:
+
+            print(
+                "FALLBACK SEARCH:",
+                query
+            )
+
+            results = wikimedia_search(
+                query,
+                limit=25
+            )
+
+            for result in results:
+
+                result["score"] = score_result(
+                    result["title"],
+                    query
+                )
+
+                candidates.append(
+                    result
+                )
+
+    # --------------------------------------------------------
+    # Deduplicate
+    # --------------------------------------------------------
+
     unique = {}
 
     for item in candidates:
@@ -719,46 +878,78 @@ def find_visuals(queries, count, scene_index):
     )
 
     candidates.sort(
-        key=lambda x: x["score"],
+        key=lambda x:
+            x.get("score", 0),
         reverse=True
     )
 
+    # --------------------------------------------------------
+    # First pass: never used
+    # --------------------------------------------------------
+
     selected = []
 
-    # First pass: never-used images
     for item in candidates:
 
-        url = item["url"]
+        if item["url"] in USED_IMAGES:
 
-        if url in USED_IMAGE_URLS:
             continue
 
-        selected.append(item)
+        selected.append(
+            item
+        )
 
         if len(selected) >= count:
+
             break
 
-    # Second pass if not enough
+    # --------------------------------------------------------
+    # Second pass: permit old image
+    # --------------------------------------------------------
+
     if len(selected) < count:
 
         for item in candidates:
 
-            url = item["url"]
-
             if any(
-                x["url"] == url
+                x["url"]
+                == item["url"]
                 for x in selected
             ):
+
                 continue
 
-            selected.append(item)
+            selected.append(
+                item
+            )
 
             if len(selected) >= count:
+
                 break
 
+    # --------------------------------------------------------
+    # Wikipedia fallback
+    # --------------------------------------------------------
+
+    if len(selected) < count:
+
+        wiki = wikipedia_image()
+
+        if wiki:
+
+            if not any(
+                x["url"]
+                == wiki["url"]
+                for x in selected
+            ):
+
+                selected.append(
+                    wiki
+                )
+
     print(
-        f"SELECTED {len(selected)} "
-        f"VISUALS FOR SCENE {scene_index}"
+        "SELECTED VISUALS:",
+        len(selected)
     )
 
     return selected[:count]
@@ -768,28 +959,33 @@ def find_visuals(queries, count, scene_index):
 # PREP IMAGE
 # ============================================================
 
-def prepare_image(input_path, output_path):
+def prepare_image(
+    input_path,
+    output_path
+):
 
-    with Image.open(input_path) as img:
+    with Image.open(
+        input_path
+    ) as img:
 
-        img = img.convert("RGB")
+        img = img.convert(
+            "RGB"
+        )
 
-        # Crop intelligently to 16:9
         img = ImageOps.fit(
             img,
             (
-                VIDEO_WIDTH,
-                VIDEO_HEIGHT,
+                WIDTH,
+                HEIGHT
             ),
             method=Image.Resampling.LANCZOS,
             centering=(0.5, 0.5),
         )
 
-        # Very subtle sharpening
         img = img.filter(
             ImageFilter.UnsharpMask(
                 radius=1.0,
-                percent=90,
+                percent=80,
                 threshold=3,
             )
         )
@@ -797,52 +993,46 @@ def prepare_image(input_path, output_path):
         img.save(
             output_path,
             "JPEG",
-            quality=94,
+            quality=93,
             optimize=True,
         )
 
 
 # ============================================================
-# CREATE DYNAMIC IMAGE CLIP
+# MOTION CLIP
 # ============================================================
 
 def create_motion_clip(
-    image_path,
-    output_path,
-    duration,
-    motion_index,
+    image,
+    output,
+    clip_duration,
+    motion_index
 ):
 
-    frames = max(
-        1,
-        int(math.ceil(duration * FPS))
-    )
-
-    # Different movement for every image
     patterns = [
 
         (
             "min(zoom+0.0018,1.10)",
-            "iw/2-(iw/zoom/2)+sin(on/18)*35",
-            "ih/2-(ih/zoom/2)"
-        ),
-
-        (
-            "min(zoom+0.0016,1.09)",
-            "iw/2-(iw/zoom/2)",
-            "ih/2-(ih/zoom/2)+cos(on/20)*28"
-        ),
-
-        (
-            "min(zoom+0.0015,1.08)",
-            "iw/2-(iw/zoom/2)-sin(on/22)*32",
+            "iw/2-(iw/zoom/2)+sin(on/18)*45",
             "ih/2-(ih/zoom/2)"
         ),
 
         (
             "min(zoom+0.0017,1.09)",
             "iw/2-(iw/zoom/2)",
-            "ih/2-(ih/zoom/2)-sin(on/19)*30"
+            "ih/2-(ih/zoom/2)+cos(on/20)*40"
+        ),
+
+        (
+            "min(zoom+0.0016,1.09)",
+            "iw/2-(iw/zoom/2)-sin(on/21)*45",
+            "ih/2-(ih/zoom/2)"
+        ),
+
+        (
+            "min(zoom+0.0018,1.10)",
+            "iw/2-(iw/zoom/2)",
+            "ih/2-(ih/zoom/2)-cos(on/19)*38"
         ),
     ]
 
@@ -850,17 +1040,17 @@ def create_motion_clip(
         motion_index % len(patterns)
     ]
 
-    filter_complex = (
-        f"scale=2400:-2,"
-        f"zoompan="
+    vf = (
+        "scale=2400:-2,"
+        "zoompan="
         f"z='{z}':"
         f"x='{x}':"
         f"y='{y}':"
-        f"d=1:"
-        f"s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:"
+        "d=1:"
+        f"s={WIDTH}x{HEIGHT}:"
         f"fps={FPS},"
-        f"setsar=1,"
-        f"format=yuv420p"
+        "setsar=1,"
+        "format=yuv420p"
     )
 
     run([
@@ -869,11 +1059,11 @@ def create_motion_clip(
         "-loop",
         "1",
         "-i",
-        image_path,
+        image,
         "-vf",
-        filter_complex,
+        vf,
         "-t",
-        f"{duration:.3f}",
+        f"{clip_duration:.3f}",
         "-r",
         str(FPS),
         "-an",
@@ -885,21 +1075,22 @@ def create_motion_clip(
         "23",
         "-pix_fmt",
         "yuv420p",
-        output_path,
+        output,
     ])
 
 
 # ============================================================
-# CREATE SCENE
+# SCENE
 # ============================================================
 
 def create_scene(
-    scene_index,
-    scene,
+    index,
+    scene
 ):
 
-    scene_dir = WORK_DIR / (
-        f"scene_{scene_index:02d}"
+    scene_dir = (
+        WORK_DIR /
+        f"scene_{index:02d}"
     )
 
     scene_dir.mkdir(
@@ -907,147 +1098,159 @@ def create_scene(
         exist_ok=True
     )
 
-    text_file = (
-        scene_dir / "script.txt"
+    audio = (
+        scene_dir /
+        "voice.mp3"
     )
 
-    text_file.write_text(
+    speech_duration = make_voice(
         scene["text"],
-        encoding="utf-8"
+        audio
     )
 
-    audio_file = (
-        scene_dir / "voice.mp3"
-    )
-
-    duration = make_voice(
-        scene["text"],
-        audio_file
-    )
-
-    # Number of images based on speech length
     image_count = max(
         2,
         min(
             4,
-            int(math.ceil(duration / 2.0))
+            math.ceil(
+                speech_duration / 1.9
+            )
         )
     )
 
     visuals = find_visuals(
         scene["queries"],
         image_count,
-        scene_index
+        index
     )
 
-    if len(visuals) < 2:
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # NEVER FAIL THE WHOLE VIDEO BECAUSE
+    # ONE SEARCH RETURNED ZERO.
+    # --------------------------------------------------------
+
+    if not visuals:
 
         raise RuntimeError(
-            f"Not enough relevant visuals "
-            f"for scene {scene_index}."
+            f"No visual source available "
+            f"for scene {index}."
         )
 
-    image_files = []
+    prepared = []
 
-    for index, item in enumerate(visuals):
+    for n, visual in enumerate(
+        visuals
+    ):
 
-        raw_file = (
+        raw = (
             scene_dir /
-            f"raw_{index:02d}.jpg"
+            f"raw_{n:02d}.jpg"
         )
 
-        prepared_file = (
+        final_image = (
             scene_dir /
-            f"image_{index:02d}.jpg"
+            f"image_{n:02d}.jpg"
         )
 
-        ok = download_image(
-            item["url"],
-            raw_file
-        )
+        if not download_image(
+            visual["url"],
+            raw
+        ):
 
-        if not ok:
             continue
 
         try:
 
             prepare_image(
-                raw_file,
-                prepared_file
+                raw,
+                final_image
             )
 
-            image_files.append(
-                prepared_file
+            prepared.append(
+                final_image
             )
 
-            USED_IMAGE_URLS.add(
-                item["url"]
+            USED_IMAGES.add(
+                visual["url"]
             )
 
             print(
-                f"VISUAL {index + 1}: "
-                f"{item['title']}"
+                "VISUAL:",
+                visual.get(
+                    "title",
+                    ""
+                )
             )
 
         except Exception as e:
 
             print(
-                "IMAGE PREP ERROR:",
+                "PREP ERROR:",
                 e
             )
 
-    if len(image_files) < 2:
+    # --------------------------------------------------------
+    # Last resort:
+    # if one image succeeded, reuse it
+    # inside the scene with different motion.
+    # --------------------------------------------------------
+
+    if len(prepared) == 0:
 
         raise RuntimeError(
-            f"Could not prepare enough "
-            f"visuals for scene {scene_index}."
+            f"Could not download any valid "
+            f"visual for scene {index}."
         )
 
-    # Divide speech duration over visuals
-    per_image = duration / len(
-        image_files
+    if len(prepared) == 1:
+
+        print(
+            "ONLY ONE IMAGE AVAILABLE."
+        )
+
+        prepared.append(
+            prepared[0]
+        )
+
+    # --------------------------------------------------------
+    # Create motion clips
+    # --------------------------------------------------------
+
+    clips = []
+
+    per_image = (
+        speech_duration
+        / len(prepared)
     )
 
-    clip_files = []
-
-    remaining = duration
-
-    for index, image_file in enumerate(
-        image_files
+    for n, image in enumerate(
+        prepared
     ):
 
-        if index == len(image_files) - 1:
-            clip_duration = remaining
-        else:
-            clip_duration = per_image
-
-        clip_duration = max(
-            1.35,
-            clip_duration
-        )
-
-        clip_file = (
+        clip = (
             scene_dir /
-            f"clip_{index:02d}.mp4"
+            f"clip_{n:02d}.mp4"
         )
 
         create_motion_clip(
-            image_file,
-            clip_file,
-            clip_duration,
-            index + scene_index
+            image,
+            clip,
+            per_image,
+            index + n
         )
 
-        clip_files.append(
-            clip_file
+        clips.append(
+            clip
         )
 
-        remaining -= clip_duration
+    # --------------------------------------------------------
+    # CONCAT VISUALS
+    # --------------------------------------------------------
 
-    # Concatenate scene visuals
     concat_file = (
         scene_dir /
-        "concat.txt"
+        "visuals.txt"
     )
 
     with concat_file.open(
@@ -1055,13 +1258,17 @@ def create_scene(
         encoding="utf-8"
     ) as f:
 
-        for clip in clip_files:
+        for clip in clips:
 
             f.write(
-                f"file '{clip.resolve()}'\n"
+                "file '"
+                + str(
+                    clip.resolve()
+                )
+                + "'\n"
             )
 
-    silent_scene = (
+    visual_video = (
         scene_dir /
         "visual.mp4"
     )
@@ -1079,10 +1286,13 @@ def create_scene(
         "copy",
         "-movflags",
         "+faststart",
-        silent_scene,
+        visual_video,
     ])
 
-    # Attach scene audio
+    # --------------------------------------------------------
+    # ATTACH VOICE
+    # --------------------------------------------------------
+
     scene_video = (
         scene_dir /
         "scene.mp4"
@@ -1092,9 +1302,9 @@ def create_scene(
         "ffmpeg",
         "-y",
         "-i",
-        silent_scene,
+        visual_video,
         "-i",
-        audio_file,
+        audio,
         "-map",
         "0:v:0",
         "-map",
@@ -1112,17 +1322,17 @@ def create_scene(
     ])
 
     print(
-        f"SCENE {scene_index} READY."
+        f"SCENE {index} READY"
     )
 
     return scene_video
 
 
 # ============================================================
-# BUILD ALL SCENES
+# BUILD
 # ============================================================
 
-def build_scenes():
+def build_all_scenes():
 
     scenes = []
 
@@ -1137,37 +1347,35 @@ def build_scenes():
         )
 
         print(
-            f"BUILDING SCENE {index}/{len(STORY)}"
+            f"SCENE {index}/{len(STORY)}"
         )
 
         print(
             "=" * 70
         )
 
-        scene_video = create_scene(
-            index,
-            scene
-        )
-
         scenes.append(
-            scene_video
+            create_scene(
+                index,
+                scene
+            )
         )
 
     return scenes
 
 
 # ============================================================
-# CONCATENATE ALL SCENES
+# CONCAT ALL
 # ============================================================
 
-def concatenate_scenes(
+def concat_all(
     scenes,
     output
 ):
 
     concat_file = (
         WORK_DIR /
-        "all_scenes.txt"
+        "all.txt"
     )
 
     with concat_file.open(
@@ -1178,7 +1386,11 @@ def concatenate_scenes(
         for scene in scenes:
 
             f.write(
-                f"file '{scene.resolve()}'\n"
+                "file '"
+                + str(
+                    scene.resolve()
+                )
+                + "'\n"
             )
 
     run([
@@ -1227,23 +1439,22 @@ def master_audio(
         "LRA=7"
     )
 
+    video_filter = (
+        f"scale={WIDTH}:{HEIGHT}:"
+        "force_original_aspect_ratio=decrease,"
+        f"pad={WIDTH}:{HEIGHT}:"
+        "(ow-iw)/2:"
+        "(oh-ih)/2,"
+        "format=yuv420p"
+    )
+
     run([
         "ffmpeg",
         "-y",
         "-i",
         input_video,
         "-vf",
-        (
-            "scale="
-            f"{VIDEO_WIDTH}:"
-            f"{VIDEO_HEIGHT}:"
-            "force_original_aspect_ratio=decrease,"
-            f"pad={VIDEO_WIDTH}:"
-            f"{VIDEO_HEIGHT}:"
-            "(ow-iw)/2:"
-            "(oh-ih)/2,"
-            "format=yuv420p"
-        ),
+        video_filter,
         "-af",
         audio_filter,
         "-c:v",
@@ -1269,32 +1480,34 @@ def master_audio(
 
 
 # ============================================================
-# COMPRESS IF TOO LARGE
+# SIZE
 # ============================================================
 
-def compress_if_needed(video):
+def compress_if_needed(
+    video
+):
 
-    size_mb = (
+    size = (
         video.stat().st_size
         / 1024
         / 1024
     )
 
     print(
-        f"\nFINAL SIZE: {size_mb:.2f} MB"
+        f"VIDEO SIZE: {size:.2f} MB"
     )
 
-    if size_mb <= MAX_VIDEO_MB:
+    if size <= MAX_VIDEO_MB:
 
-        return video
-
-    print(
-        "VIDEO TOO LARGE."
-    )
+        return
 
     compressed = (
         WORK_DIR /
         "compressed.mp4"
+    )
+
+    print(
+        "COMPRESSING..."
     )
 
     run([
@@ -1321,33 +1534,33 @@ def compress_if_needed(video):
         compressed,
     ])
 
-    new_size = (
-        compressed.stat().st_size
+    shutil.copy2(
+        compressed,
+        video
+    )
+
+    size = (
+        video.stat().st_size
         / 1024
         / 1024
     )
 
     print(
-        f"COMPRESSED SIZE: "
-        f"{new_size:.2f} MB"
+        f"COMPRESSED SIZE: {size:.2f} MB"
     )
 
-    if new_size > MAX_VIDEO_MB:
-
-        print(
-            "SECOND COMPRESSION PASS..."
-        )
+    if size > MAX_VIDEO_MB:
 
         compressed2 = (
             WORK_DIR /
-            "compressed_final.mp4"
+            "compressed2.mp4"
         )
 
         run([
             "ffmpeg",
             "-y",
             "-i",
-            compressed,
+            video,
             "-c:v",
             "libx264",
             "-preset",
@@ -1367,119 +1580,94 @@ def compress_if_needed(video):
             compressed2,
         ])
 
-        compressed = compressed2
-
-        new_size = (
-            compressed.stat().st_size
-            / 1024
-            / 1024
+        shutil.copy2(
+            compressed2,
+            video
         )
-
-        print(
-            f"FINAL COMPRESSED SIZE: "
-            f"{new_size:.2f} MB"
-        )
-
-    shutil.copy2(
-        compressed,
-        video
-    )
-
-    return video
 
 
 # ============================================================
-# VALIDATE VIDEO
+# VALIDATE
 # ============================================================
 
-def validate_video(video):
+def validate(
+    video
+):
 
-    print(
-        "\nVALIDATING FINAL VIDEO..."
-    )
-
-    duration = ffprobe_duration(
-        video
-    )
-
-    if duration < 30:
+    if not video.exists():
 
         raise RuntimeError(
-            "Final video is unexpectedly short."
+            "Final video does not exist."
         )
 
-    size_mb = (
+    d = duration(
+        video
+    )
+
+    size = (
         video.stat().st_size
         / 1024
         / 1024
     )
 
-    if size_mb > MAX_VIDEO_MB:
+    if d < 30:
 
         raise RuntimeError(
-            f"Final video is still too large: "
-            f"{size_mb:.2f} MB"
+            "Final video is too short."
         )
 
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height,r_frame_rate",
-            "-of",
-            "json",
-            str(video),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
+    if size > MAX_VIDEO_MB:
+
+        raise RuntimeError(
+            f"Video exceeds 45 MB: "
+            f"{size:.2f} MB"
+        )
+
+    print(
+        "\n"
+        + "=" * 70
     )
 
     print(
-        result.stdout
+        "FINAL VIDEO VALIDATION: PASS"
     )
 
     print(
-        f"FINAL DURATION: {duration:.2f}s"
+        f"DURATION: {d:.2f}s"
     )
 
     print(
-        f"FINAL SIZE: {size_mb:.2f} MB"
+        f"SIZE: {size:.2f} MB"
     )
 
     print(
-        "VIDEO VALIDATION: PASS"
+        f"FILE: {video}"
+    )
+
+    print(
+        "=" * 70
     )
 
 
 # ============================================================
-# CLEAN OLD WORK
+# CLEAN
 # ============================================================
 
-def clean_work():
+def clean():
 
     if WORK_DIR.exists():
 
-        for item in WORK_DIR.iterdir():
+        shutil.rmtree(
+            WORK_DIR
+        )
 
-            try:
+    WORK_DIR.mkdir(
+        exist_ok=True
+    )
 
-                if item.is_dir():
-                    shutil.rmtree(item)
-
-                else:
-                    item.unlink()
-
-            except Exception as e:
-
-                print(
-                    "CLEAN ERROR:",
-                    e
-                )
+    FINAL_VIDEO.unlink(
+        missing_ok=True
+    )
 
 
 # ============================================================
@@ -1498,48 +1686,43 @@ def main():
     )
 
     print(
-        "RONALDO — SAUDI ARABIC / DYNAMIC VISUAL ENGINE"
+        "RONALDO — SAUDI ARABIC"
+    )
+
+    print(
+        "DYNAMIC VISUAL ENGINE"
     )
 
     print(
         "=" * 70
     )
 
-    clean_work()
+    clean()
 
-    FINAL_VIDEO.unlink(
-        missing_ok=True
-    )
+    scenes = build_all_scenes()
 
-    scenes = build_scenes()
-
-    print(
-        "\nALL SCENES CREATED:",
-        len(scenes)
-    )
-
-    raw_video = (
+    raw = (
         WORK_DIR /
-        "raw_complete.mp4"
+        "complete_raw.mp4"
     )
 
-    concatenate_scenes(
+    concat_all(
         scenes,
-        raw_video
+        raw
     )
 
-    mastered_video = (
+    mastered = (
         WORK_DIR /
         "mastered.mp4"
     )
 
     master_audio(
-        raw_video,
-        mastered_video
+        raw,
+        mastered
     )
 
     shutil.copy2(
-        mastered_video,
+        mastered,
         FINAL_VIDEO
     )
 
@@ -1547,30 +1730,20 @@ def main():
         FINAL_VIDEO
     )
 
-    validate_video(
+    validate(
         FINAL_VIDEO
     )
 
     print(
         "\n"
-        + "=" * 70
-    )
-
-    print(
-        "ACURIVO VIDEO READY"
-    )
-
-    print(
-        f"FILE: {FINAL_VIDEO}"
-    )
-
-    print(
-        "=" * 70
+        "ACURIVO VIDEO READY."
     )
 
 
 if __name__ == "__main__":
+
     try:
+
         main()
 
     except Exception as e:
