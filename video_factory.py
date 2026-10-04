@@ -1,496 +1,635 @@
-import subprocess
-from pathlib import Path
-import urllib.request
-import urllib.parse
-import json
-import random
+import os
 import re
+import json
 import time
+import random
+import shutil
+import subprocess
+import requests
+import edge_tts
 
-OUT = Path("output")
-IMG = OUT / "images"
-
-OUT.mkdir(exist_ok=True)
-IMG.mkdir(exist_ok=True)
-
-# ============================================================
-# ACURIVO DAILY AI FACTORY
-# ============================================================
-
-SEARCHES = [
-    "AI technology news",
-    "future technology",
-    "science discovery",
-    "space discovery",
-    "business innovation",
-    "psychology science",
-    "future of work",
-    "medical technology",
-    "energy technology",
-    "robotics",
-    "artificial intelligence",
-    "future science",
-    "technology explained",
-    "science explained"
-]
-
-BLOCKED = [
-    "life update",
-    "vlog",
-    "my life",
-    "we moved",
-    "my family",
-    "wedding",
-    "birthday",
-    "personal",
-    "daily vlog",
-    "house tour",
-    "room tour",
-    "travel vlog",
-    "reaction",
-    "prank",
-    "challenge",
-    "celebrity gossip"
-]
-
-
-def run(cmd):
-    print("RUN:", " ".join(str(x) for x in cmd))
-    subprocess.run(cmd, check=True)
+from urllib.parse import quote
+from pathlib import Path
 
 
 # ============================================================
-# DISCOVER TOPICS
+# ACURIVO VIDEO FACTORY v2
+# Topic-aware visuals + exact audio duration
 # ============================================================
 
-def discover_videos():
+OUTPUT_DIR = Path("output")
+IMAGE_DIR = OUTPUT_DIR / "images"
 
-    print("=" * 60)
-    print("ACURIVO TOPIC SCOUT")
-    print("=" * 60)
+VIDEO_FILE = OUTPUT_DIR / "ACURIVO_VIDEO.mp4"
+REPORT_FILE = OUTPUT_DIR / "report.txt"
 
-    results = []
+VOICE = "ar-SA-HamedNeural"
 
-    for query in SEARCHES:
+MAX_IMAGES = 8
+MIN_SCRIPT_WORDS = 170
+MAX_SCRIPT_WORDS = 320
 
-        print("SEARCH:", query)
+REQUEST_TIMEOUT = 25
 
-        try:
 
-            output = subprocess.check_output(
-                [
-                    "python",
-                    "-m",
-                    "yt_dlp",
-                    "--flat-playlist",
-                    "--dump-single-json",
-                    "--playlist-end",
-                    "10",
-                    "ytsearch10:" + query
-                ],
-                text=True,
-                stderr=subprocess.DEVNULL
-            )
+# ============================================================
+# GENERAL HELPERS
+# ============================================================
 
-            data = json.loads(output)
+def run_command(command):
+    print("\nRUN:", " ".join(command))
 
-            for item in data.get("entries", []):
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
 
-                if not item:
-                    continue
+    print(result.stdout)
 
-                title = item.get("title", "").strip()
-
-                if not title:
-                    continue
-
-                low = title.lower()
-
-                if any(
-                    word in low
-                    for word in BLOCKED
-                ):
-                    continue
-
-                results.append({
-                    "title": title,
-                    "id": item.get("id", ""),
-                    "query": query
-                })
-
-        except Exception as e:
-
-            print(
-                "SEARCH ERROR:",
-                e
-            )
-
-    if not results:
-
+    if result.returncode != 0:
         raise RuntimeError(
-            "لم يتم العثور على مواضيع مناسبة."
+            "Command failed:\n" + result.stdout
         )
 
-    unique = {}
-
-    for item in results:
-
-        key = re.sub(
-            r"\s+",
-            " ",
-            item["title"].lower()
-        ).strip()
-
-        unique[key] = item
-
-    results = list(unique.values())
-
-    print(
-        "FOUND:",
-        len(results),
-        "VIDEOS"
-    )
-
-    return results
+    return result.stdout
 
 
-# ============================================================
-# CLEAN TITLE
-# ============================================================
+def clean_text(text):
+    if not text:
+        return ""
 
-def clean_title(title):
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"\s+", " ", text)
 
-    title = re.sub(
-        r"\[[^\]]*\]",
-        "",
-        title
-    )
+    return text.strip()
 
-    title = re.sub(
-        r"\([^)]*\)",
-        "",
-        title
-    )
 
-    title = re.sub(
-        r"#\w+",
-        "",
-        title
-    )
+def count_words(text):
+    return len(re.findall(r"\S+", text))
 
-    title = re.sub(
-        r"\s+",
-        " ",
-        title
-    )
 
-    return title.strip(" -|")
+def safe_filename(text):
+    text = re.sub(r"[^\w\u0600-\u06FF -]", "", text)
+    text = re.sub(r"\s+", "_", text)
+    return text[:80]
 
 
 # ============================================================
-# TRANSLATE TOPIC TO ARABIC
+# TOPIC DISCOVERY
+# ============================================================
+
+BLOCKED_TERMS = [
+    "vlog",
+    "daily vlog",
+    "my life",
+    "we moved",
+    "i started",
+    "my business",
+    "personal update",
+    "family",
+    "relationship",
+    "wedding",
+    "pregnancy",
+    "house tour",
+    "room tour",
+    "day in my life",
+    "life update"
+]
+
+
+SEARCH_TERMS = [
+    "artificial intelligence",
+    "future technology",
+    "science discovery",
+    "space technology",
+    "robotics",
+    "future of humanity",
+    "medical technology",
+    "energy technology",
+    "interesting science",
+    "technology breakthrough"
+]
+
+
+def is_blocked_topic(topic):
+    low = topic.lower()
+
+    for term in BLOCKED_TERMS:
+        if term in low:
+            return True
+
+    return False
+
+
+def search_youtube_topics():
+    print("\n========================================")
+    print("ACURIVO TOPIC SCOUT")
+    print("========================================")
+
+    candidates = []
+
+    for query in SEARCH_TERMS:
+
+        print("Searching:", query)
+
+        try:
+            result = subprocess.run(
+                [
+                    "yt-dlp",
+                    f"ytsearch8:{query}",
+                    "--flat-playlist",
+                    "--print",
+                    "%(title)s"
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=45
+            )
+
+            lines = [
+                clean_text(x)
+                for x in result.stdout.splitlines()
+                if clean_text(x)
+            ]
+
+            for title in lines:
+
+                if is_blocked_topic(title):
+                    continue
+
+                candidates.append(title)
+
+        except Exception as e:
+            print("Topic search warning:", e)
+
+    if not candidates:
+        return "مستقبل الذكاء الاصطناعي وتأثيره على حياتنا"
+
+    # Remove duplicates
+    unique = list(dict.fromkeys(candidates))
+
+    # Randomize slightly so the channel doesn't repeat
+    random.shuffle(unique)
+
+    selected = unique[0]
+
+    print("\nSELECTED TOPIC:")
+    print(selected)
+
+    return selected
+
+
+# ============================================================
+# TRANSLATION
 # ============================================================
 
 def translate_to_arabic(text):
 
-    print("")
+    print("\nTRANSLATING TOPIC...")
+
+    url = (
+        "https://translate.googleapis.com/translate_a/single"
+        "?client=gtx"
+        "&sl=auto"
+        "&tl=ar"
+        "&dt=t"
+        "&q=" + quote(text)
+    )
+
+    response = requests.get(
+        url,
+        timeout=REQUEST_TIMEOUT
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    translated = ""
+
+    for item in data[0]:
+        if item and item[0]:
+            translated += item[0]
+
+    translated = clean_text(translated)
+
+    if not translated:
+        translated = text
+
+    print("ARABIC TOPIC:")
+    print(translated)
+
+    return translated
+
+
+# ============================================================
+# SCRIPT CREATION
+# ============================================================
+
+def create_script(topic_ar):
+
+    print("\nCREATING ARABIC SCRIPT...")
+
+    script = f"""
+هل تخيلت يومًا أن فكرة تبدو بسيطة يمكن أن تغيّر الطريقة التي نعيش بها في المستقبل؟
+
+موضوعنا اليوم هو: {topic_ar}.
+
+هذا الموضوع لا يتعلق فقط بما نراه اليوم، بل بما يمكن أن يحدث خلال السنوات القادمة.
+
+عندما نتابع التطورات الحديثة، نكتشف أن العالم يتغير بسرعة كبيرة. أفكار كانت تبدو خيالية قبل سنوات أصبحت اليوم جزءًا من الواقع، وبعضها يتطور بوتيرة أسرع مما يتوقعه كثير من الناس.
+
+الأمر المثير للاهتمام هو أن التأثير الحقيقي لا يأتي من التقنية وحدها، بل من الطريقة التي نستخدمها بها. عندما تجتمع المعرفة مع الابتكار والبيانات والقدرة على اتخاذ القرار، يمكن أن تظهر نتائج تغير قطاعات كاملة.
+
+وهنا تظهر أهمية {topic_ar}.
+
+فبدلًا من النظر إلى هذا الموضوع باعتباره مجرد اتجاه مؤقت، من الأفضل أن نسأل سؤالًا أكبر:
+
+إلى أين يمكن أن يقودنا هذا التطور؟
+
+قد نشهد خلال السنوات القادمة أدوات أكثر ذكاءً، وعمليات أسرع، واكتشافات جديدة، وربما طرقًا مختلفة تمامًا للعمل والتعلم واتخاذ القرارات.
+
+لكن هناك جانبًا آخر مهمًا.
+
+كل تقدم جديد يحمل معه فرصًا وتحديات في الوقت نفسه. ولذلك فإن فهم ما يحدث مبكرًا يمنح الإنسان قدرة أفضل على الاستعداد للمستقبل بدلًا من انتظار التغيير بعد حدوثه.
+
+والأهم أن المستقبل لا يصنعه الأشخاص الذين يتوقعونه فقط، بل الأشخاص الذين يفهمون اتجاهه ويستعدون له.
+
+لهذا السبب يستحق {topic_ar} أن نتابعه باهتمام.
+
+فما نراه اليوم قد يكون مجرد بداية لشيء أكبر بكثير غدًا.
+
+والسؤال الحقيقي ليس: هل سيتغير العالم؟
+
+بل:
+
+هل سنكون مستعدين عندما يحدث التغيير؟
+
+تابعنا للمزيد من القصص والأفكار التي تساعدك على فهم العالم من زاوية مختلفة.
+"""
+
+    script = clean_text(script)
+
+    words = count_words(script)
+
+    print("SCRIPT WORDS:", words)
+
+    if words < MIN_SCRIPT_WORDS:
+        raise RuntimeError(
+            f"النص قصير جدًا: {words} كلمة"
+        )
+
+    if words > MAX_SCRIPT_WORDS:
+        words_list = script.split()
+        script = " ".join(
+            words_list[:MAX_SCRIPT_WORDS]
+        )
+
+    return script
+
+
+# ============================================================
+# WIKIMEDIA COMMONS IMAGE SEARCH
+# ============================================================
+
+def wikimedia_search_images(topic, limit=MAX_IMAGES):
+
+    print("\n========================================")
+    print("SEARCHING TOPIC-RELATED VISUALS")
+    print("========================================")
+
+    api = "https://commons.wikimedia.org/w/api.php"
+
+    # Search both Arabic and English
+    queries = [
+        topic,
+        translate_to_arabic(topic),
+        " ".join(topic.split()[:5])
+    ]
+
+    found = []
+
+    headers = {
+        "User-Agent":
+            "ACURIVO/2.0 educational video factory"
+    }
+
+    for query in queries:
+
+        if len(found) >= limit:
+            break
+
+        print("Image search:", query)
+
+        params = {
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": query,
+            "gsrnamespace": 6,
+            "gsrlimit": 20,
+            "prop": "imageinfo",
+            "iiprop": "url|mime",
+            "iiurlwidth": 1280,
+            "format": "json"
+        }
+
+        try:
+            response = requests.get(
+                api,
+                params=params,
+                headers=headers,
+                timeout=REQUEST_TIMEOUT
+            )
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            pages = data.get(
+                "query",
+                {}
+            ).get(
+                "pages",
+                {}
+            )
+
+            for page in pages.values():
+
+                info = page.get("imageinfo")
+
+                if not info:
+                    continue
+
+                item = info[0]
+
+                mime = item.get("mime", "")
+
+                if not mime.startswith("image/"):
+                    continue
+
+                image_url = (
+                    item.get("thumburl")
+                    or item.get("url")
+                )
+
+                if not image_url:
+                    continue
+
+                if image_url.lower().endswith(".svg"):
+                    continue
+
+                title = page.get(
+                    "title",
+                    ""
+                )
+
+                found.append({
+                    "url": image_url,
+                    "title": title
+                })
+
+                if len(found) >= limit:
+                    break
+
+        except Exception as e:
+            print(
+                "Wikimedia search warning:",
+                e
+            )
+
+    # Remove duplicates
+    unique = []
+    seen = set()
+
+    for item in found:
+
+        url = item["url"]
+
+        if url in seen:
+            continue
+
+        seen.add(url)
+        unique.append(item)
+
     print(
-        "TRANSLATING TOPIC TO ARABIC..."
+        "RELATED IMAGES FOUND:",
+        len(unique)
+    )
+
+    return unique[:limit]
+
+
+# ============================================================
+# IMAGE DOWNLOAD
+# ============================================================
+
+def download_related_images(topic):
+
+    IMAGE_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    results = wikimedia_search_images(
+        topic,
+        MAX_IMAGES
+    )
+
+    downloaded = []
+
+    for index, item in enumerate(results):
+
+        filename = (
+            IMAGE_DIR /
+            f"topic_{index:02d}.jpg"
+        )
+
+        print(
+            f"Downloading image {index + 1}/"
+            f"{len(results)}"
+        )
+
+        try:
+
+            response = requests.get(
+                item["url"],
+                timeout=REQUEST_TIMEOUT,
+                headers={
+                    "User-Agent":
+                        "ACURIVO/2.0"
+                }
+            )
+
+            response.raise_for_status()
+
+            content = response.content
+
+            if len(content) < 5000:
+                continue
+
+            with open(
+                filename,
+                "wb"
+            ) as f:
+                f.write(content)
+
+            # Verify image using ffmpeg
+            check = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    "stream=width,height",
+                    "-of",
+                    "csv=p=0",
+                    str(filename)
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            if check.returncode != 0:
+                filename.unlink(
+                    missing_ok=True
+                )
+                continue
+
+            downloaded.append(
+                str(filename)
+            )
+
+        except Exception as e:
+            print(
+                "Image download warning:",
+                e
+            )
+
+    return downloaded
+
+
+# ============================================================
+# FALLBACK VISUALS
+# ============================================================
+
+def download_fallback_images():
+
+    print(
+        "\nRELATED IMAGES WERE NOT ENOUGH."
     )
 
     print(
-        "ORIGINAL:",
-        text
+        "USING SAFE FALLBACK VISUALS."
     )
 
-    try:
+    downloaded = []
 
-        params = urllib.parse.urlencode({
-            "client": "gtx",
-            "sl": "auto",
-            "tl": "ar",
-            "dt": "t",
-            "q": text
-        })
+    IMAGE_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-        url = (
-            "https://translate.googleapis.com/"
-            "translate_a/single?"
-            + params
+    for i in range(MAX_IMAGES):
+
+        filename = (
+            IMAGE_DIR /
+            f"fallback_{i:02d}.jpg"
         )
 
-        request = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            }
-        )
+        try:
 
-        with urllib.request.urlopen(
-            request,
-            timeout=30
-        ) as response:
-
-            data = json.loads(
-                response.read().decode(
-                    "utf-8"
+            url = (
+                "https://picsum.photos/"
+                "1280/720?random="
+                + str(
+                    int(time.time())
+                    + i
                 )
             )
 
-        translated = ""
-
-        for part in data[0]:
-
-            if part and part[0]:
-                translated += part[0]
-
-        translated = re.sub(
-            r"\s+",
-            " ",
-            translated
-        ).strip()
-
-        if translated:
-
-            print(
-                "ARABIC TOPIC:",
-                translated
+            response = requests.get(
+                url,
+                timeout=REQUEST_TIMEOUT
             )
 
-            return translated
+            response.raise_for_status()
 
-    except Exception as e:
+            with open(
+                filename,
+                "wb"
+            ) as f:
+                f.write(
+                    response.content
+                )
 
-        print(
-            "TRANSLATION ERROR:",
-            e
-        )
+            downloaded.append(
+                str(filename)
+            )
 
-    return text
+        except Exception as e:
+            print(
+                "Fallback image warning:",
+                e
+            )
 
-
-# ============================================================
-# SELECT TOPIC
-# ============================================================
-
-def choose_topic(results):
-
-    random.shuffle(results)
-
-    for item in results:
-
-        original = clean_title(
-            item["title"]
-        )
-
-        if len(original) < 15:
-            continue
-
-        arabic = translate_to_arabic(
-            original
-        )
-
-        if len(arabic) < 8:
-            continue
-
-        print("=" * 60)
-        print("SELECTED TOPIC")
-        print(
-            "ORIGINAL:",
-            original
-        )
-        print(
-            "ARABIC:",
-            arabic
-        )
-        print(
-            "SOURCE:",
-            item["query"]
-        )
-        print("=" * 60)
-
-        return (
-            arabic,
-            original,
-            item
-        )
-
-    item = results[0]
-
-    original = clean_title(
-        item["title"]
-    )
-
-    arabic = translate_to_arabic(
-        original
-    )
-
-    return (
-        arabic,
-        original,
-        item
-    )
+    return downloaded
 
 
 # ============================================================
-# ORIGINAL ARABIC SCRIPT
+# AUDIO
 # ============================================================
 
-def build_script(topic):
+async def create_audio_async(
+    script,
+    audio_file
+):
 
-    script = f"""
-هناك تطور جديد يستحق الانتباه.
+    print("\nCREATING ARABIC VOICE...")
 
-موضوعنا اليوم هو:
-
-{topic}
-
-قد يبدو هذا الموضوع في البداية مجرد خبر أو فكرة جديدة،
-لكن عند النظر إليه بصورة أعمق،
-سنجد أن وراءه مجموعة من التغيرات المهمة.
-
-خلال السنوات الأخيرة،
-تسارعت وتيرة التغيير في العالم بشكل كبير.
-
-التقنية تتطور،
-والعلوم تتقدم،
-والاقتصاد يتغير،
-وطريقة تعامل الإنسان مع المعلومات أصبحت مختلفة.
-
-ولهذا أصبحت بعض الموضوعات التي كانت تبدو بعيدة
-عن حياتنا اليومية مرتبطة بنا أكثر مما نتوقع.
-
-أما في موضوع {topic}،
-فالسؤال المهم ليس فقط:
-
-ماذا يحدث؟
-
-بل السؤال الأهم:
-
-لماذا يحدث هذا الآن؟
-
-هناك عدة عوامل تساعد على فهم الصورة.
-
-أول هذه العوامل هو التطور السريع.
-
-فعندما تتطور المعرفة والتقنية بسرعة،
-يمكن لفكرة صغيرة أن تتحول خلال فترة قصيرة
-إلى اتجاه واسع له تأثير كبير.
-
-العامل الثاني هو حجم التأثير.
-
-فبعض التطورات لا تؤثر في مجال واحد فقط،
-بل يمكن أن تمتد آثارها إلى الشركات،
-والوظائف،
-والتعليم،
-والاقتصاد،
-وحياة الناس اليومية.
-
-أما العامل الثالث،
-فهو أن النتائج النهائية لا تكون واضحة منذ البداية.
-
-وهنا يجب أن نكون حذرين.
-
-ليس كل اتجاه جديد يعني بالضرورة
-أن العالم سيتغير بالطريقة التي يتوقعها الناس.
-
-هناك فرق بين التوقع،
-وبين ما تثبته التجارب والأدلة.
-
-ولهذا فإن أفضل طريقة لفهم المستقبل
-هي مراقبة التطورات،
-ومقارنة النتائج،
-والبحث عن الأدلة الحقيقية.
-
-وفي حالة {topic}،
-قد يكون التأثير الحقيقي أكبر من مجرد الخبر الحالي.
-
-فإذا استمر هذا الاتجاه،
-فقد نرى تغيرات جديدة خلال السنوات القادمة.
-
-وقد تظهر فرص جديدة،
-وفي الوقت نفسه قد تظهر تحديات لم تكن واضحة من قبل.
-
-والأهم أن نفهم أن التغيير لا يحدث في لحظة واحدة.
-
-غالبًا يبدأ بفكرة،
-ثم تجربة،
-ثم تطبيق محدود،
-وبعد ذلك يبدأ التأثير في الانتشار.
-
-وهذا ما يجعل متابعة التطورات العلمية والتقنية
-أمرًا مهمًا لكل شخص يريد أن يفهم المستقبل.
-
-فما نراه اليوم قد يكون مجرد بداية.
-
-وقد تتغير طريقة عملنا،
-وطريقة تعلمنا،
-وطريقة اتخاذنا للقرارات،
-بناءً على تطورات تبدو الآن في بدايتها.
-
-لكن لا يمكننا معرفة المستقبل بشكل كامل.
-
-ولهذا من الأفضل أن نفرق دائمًا بين الحقيقة،
-والتوقع،
-والاحتمال.
-
-المعلومة الموثوقة تساعدنا على فهم الواقع،
-أما التوقع فيعطينا سيناريوهات محتملة،
-والقرار الذكي يحتاج إلى الجمع بين الاثنين.
-
-وفي النهاية،
-السؤال ليس:
-
-هل سيتغير العالم؟
-
-لأن العالم يتغير بالفعل.
-
-السؤال الحقيقي هو:
-
-إلى أي اتجاه يسير هذا التغيير؟
-
-ومن سيكون مستعدًا عندما تظهر نتائجه؟
-
-ربما تكون الإجابة أهم مما نتوقع.
-
-تابع ACURIVO للمزيد من القصص
-والأفكار والتطورات التي تستحق أن تعرفها.
-"""
-
-    return script.strip()
-
-
-# ============================================================
-# ARABIC VOICE
-# ============================================================
-
-def make_voice(script):
-
-    audio = OUT / "voice.mp3"
-
-    run([
-        "python",
-        "-m",
-        "edge_tts",
-        "--voice",
-        "ar-SA-HamedNeural",
-        "--rate=+0%",
-        "--text",
+    communicate = edge_tts.Communicate(
         script,
-        "--write-media",
-        str(audio)
-    ])
+        VOICE,
+        rate="+0%",
+        volume="+0%"
+    )
 
-    return audio
+    await communicate.save(
+        str(audio_file)
+    )
+
+
+def create_audio(script):
+
+    audio_file = (
+        OUTPUT_DIR /
+        "voice.mp3"
+    )
+
+    import asyncio
+
+    asyncio.run(
+        create_audio_async(
+            script,
+            audio_file
+        )
+    )
+
+    return audio_file
 
 
 # ============================================================
 # AUDIO DURATION
 # ============================================================
 
-def get_audio_duration(audio):
+def get_audio_duration(audio_file):
 
-    output = subprocess.check_output(
+    result = subprocess.run(
         [
             "ffprobe",
             "-v",
@@ -499,163 +638,107 @@ def get_audio_duration(audio):
             "format=duration",
             "-of",
             "default=noprint_wrappers=1:nokey=1",
-            str(audio)
+            str(audio_file)
         ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True
     )
 
+    if result.returncode != 0:
+        raise RuntimeError(
+            "تعذر قراءة مدة الصوت."
+        )
+
     duration = float(
-        output.strip()
+        result.stdout.strip()
     )
 
+    if duration <= 0:
+        raise RuntimeError(
+            "مدة الصوت غير صحيحة."
+        )
+
     print(
-        "AUDIO DURATION:",
-        round(duration, 2),
-        "SECONDS"
+        f"\nAUDIO DURATION: "
+        f"{duration:.2f} seconds"
     )
 
     return duration
 
 
 # ============================================================
-# FREE IMAGE SOURCE
+# IMAGE PREPARATION
 # ============================================================
 
-def make_image(prompt, index):
+def normalize_images(images):
 
-    filename = IMG / f"scene_{index}.jpg"
+    normalized = []
 
-    url = (
-        "https://picsum.photos/1920/1080?random="
-        + str(
-            int(time.time() * 1000)
-            + index
-        )
-    )
+    for index, image in enumerate(images):
 
-    try:
-
-        request = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            }
+        output = (
+            IMAGE_DIR /
+            f"normalized_{index:02d}.jpg"
         )
 
-        with urllib.request.urlopen(
-            request,
-            timeout=30
-        ) as response:
+        run_command([
+            "ffmpeg",
+            "-y",
+            "-i",
+            image,
+            "-vf",
+            (
+                "scale=1280:720:"
+                "force_original_aspect_ratio=increase,"
+                "crop=1280:720"
+            ),
+            "-q:v",
+            "3",
+            str(output)
+        ])
 
-            data = response.read()
-
-        with open(
-            filename,
-            "wb"
-        ) as f:
-
-            f.write(data)
-
-        if (
-            filename.exists()
-            and filename.stat().st_size > 10000
-        ):
-
-            print(
-                "IMAGE READY:",
-                filename
-            )
-
-            return filename
-
-    except Exception as e:
-
-        print(
-            "IMAGE ERROR:",
-            e
+        normalized.append(
+            str(output)
         )
 
-    return None
+    return normalized
 
 
 # ============================================================
-# CREATE SCENES
+# VIDEO CREATION
 # ============================================================
 
-def make_scenes(topic):
+def create_video(images, audio_file, duration):
 
-    prompts = [
-        f"{topic} technology",
-        f"{topic} science",
-        f"{topic} modern world",
-        f"{topic} innovation",
-        f"{topic} future"
-    ]
-
-    images = []
-
-    for i, prompt in enumerate(
-        prompts,
-        1
-    ):
-
-        print(
-            f"GENERATING SCENE {i}/5"
-        )
-
-        image = make_image(
-            prompt,
-            i
-        )
-
-        if image:
-            images.append(image)
-
-        time.sleep(1)
+    print("\n========================================")
+    print("CREATING FULL-LENGTH VIDEO")
+    print("========================================")
 
     if not images:
-
         raise RuntimeError(
-            "تعذر الحصول على صور مجانية."
+            "لا توجد صور لإنشاء الفيديو."
         )
 
+    # Exactly enough time for the full audio.
+    image_duration = duration / len(images)
+
     print(
-        "TOTAL IMAGES:",
-        len(images)
-    )
-
-    return images
-
-
-# ============================================================
-# BUILD VIDEO
-# ============================================================
-
-def make_video(images, audio):
-
-    video = OUT / "ACURIVO_VIDEO.mp4"
-
-    audio_duration = get_audio_duration(
-        audio
-    )
-
-    image_duration = (
-        audio_duration / len(images)
+        f"IMAGES: {len(images)}"
     )
 
     print(
-        "IMAGE DURATION:",
-        round(
-            image_duration,
-            2
-        ),
-        "SECONDS"
+        f"SECONDS PER IMAGE: "
+        f"{image_duration:.2f}"
     )
 
-    concat = OUT / "images.txt"
+    concat_file = (
+        OUTPUT_DIR /
+        "images.txt"
+    )
 
     with open(
-        concat,
+        concat_file,
         "w",
         encoding="utf-8"
     ) as f:
@@ -663,18 +746,22 @@ def make_video(images, audio):
         for image in images:
 
             f.write(
-                f"file '{image.resolve()}'\n"
+                f"file '{Path(image).resolve()}'\n"
             )
 
             f.write(
-                f"duration {image_duration:.3f}\n"
+                f"duration {image_duration:.6f}\n"
             )
 
+        # Required by concat demuxer
         f.write(
-            f"file '{images[-1].resolve()}'\n"
+            f"file '{Path(images[-1]).resolve()}'\n"
         )
 
-    run([
+    # Small safety margin prevents audio truncation
+    final_duration = duration + 0.20
+
+    run_command([
         "ffmpeg",
         "-y",
 
@@ -685,23 +772,13 @@ def make_video(images, audio):
         "0",
 
         "-i",
-        str(concat),
+        str(concat_file),
 
         "-i",
-        str(audio),
+        str(audio_file),
 
         "-vf",
-        (
-            "scale=1920:1080,"
-            "zoompan="
-            "z='min(zoom+0.0004,1.08)':"
-            "d=240:"
-            "s=1920x1080:"
-            "fps=30"
-        ),
-
-        "-t",
-        str(audio_duration + 0.5),
+        "format=yuv420p",
 
         "-c:v",
         "libx264",
@@ -709,128 +786,341 @@ def make_video(images, audio):
         "-preset",
         "veryfast",
 
-        "-pix_fmt",
-        "yuv420p",
+        "-crf",
+        "23",
 
         "-c:a",
         "aac",
 
         "-b:a",
-        "192k",
+        "128k",
 
-        "-shortest",
+        "-t",
+        f"{final_duration:.3f}",
 
-        str(video)
+        "-movflags",
+        "+faststart",
+
+        str(VIDEO_FILE)
     ])
 
-    return video
+    # Final verification
+    verify_video_duration()
+
+    return VIDEO_FILE
+
+
+# ============================================================
+# FINAL VIDEO VERIFICATION
+# ============================================================
+
+def get_video_duration():
+
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(VIDEO_FILE)
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "تعذر قراءة مدة الفيديو."
+        )
+
+    return float(
+        result.stdout.strip()
+    )
+
+
+def verify_video_duration():
+
+    video_duration = get_video_duration()
+
+    audio_duration = get_audio_duration(
+        OUTPUT_DIR / "voice.mp3"
+    )
+
+    difference = (
+        video_duration -
+        audio_duration
+    )
+
+    print("\n========================================")
+    print("FINAL DURATION CHECK")
+    print("========================================")
+
+    print(
+        f"AUDIO : {audio_duration:.2f}s"
+    )
+
+    print(
+        f"VIDEO : {video_duration:.2f}s"
+    )
+
+    print(
+        f"DIFFERENCE : {difference:.2f}s"
+    )
+
+    # Video must NEVER be shorter than audio.
+    if video_duration + 0.05 < audio_duration:
+        raise RuntimeError(
+            "ERROR: الفيديو أقصر من الصوت."
+        )
+
+    print(
+        "DURATION CHECK: PASS"
+    )
 
 
 # ============================================================
 # REPORT
 # ============================================================
 
-def save_report(
+def create_report(
     topic,
-    original,
-    source
+    topic_ar,
+    script,
+    audio_duration,
+    video_duration,
+    image_count
 ):
 
-    report = OUT / "topic_report.txt"
-
-    report.write_text(
-        "ACURIVO DAILY TOPIC\n\n"
-        f"ARABIC TOPIC: {topic}\n"
-        f"ORIGINAL TOPIC: {original}\n"
-        f"SOURCE SEARCH: {source['query']}\n"
-        f"SOURCE TITLE: {source['title']}\n"
-        f"VIDEO ID: {source.get('id', '')}\n",
+    with open(
+        REPORT_FILE,
+        "w",
         encoding="utf-8"
+    ) as f:
+
+        f.write(
+            "ACURIVO VIDEO FACTORY REPORT\n"
+        )
+
+        f.write(
+            "================================\n\n"
+        )
+
+        f.write(
+            f"Original topic:\n{topic}\n\n"
+        )
+
+        f.write(
+            f"Arabic topic:\n{topic_ar}\n\n"
+        )
+
+        f.write(
+            f"Script words: "
+            f"{count_words(script)}\n"
+        )
+
+        f.write(
+            f"Audio duration: "
+            f"{audio_duration:.2f} seconds\n"
+        )
+
+        f.write(
+            f"Video duration: "
+            f"{video_duration:.2f} seconds\n"
+        )
+
+        f.write(
+            f"Images used: "
+            f"{image_count}\n"
+        )
+
+        f.write(
+            "\nDURATION CHECK: PASS\n"
+        )
+
+
+# ============================================================
+# CLEANUP
+# ============================================================
+
+def cleanup_old_files():
+
+    OUTPUT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
     )
 
+    if IMAGE_DIR.exists():
+        shutil.rmtree(
+            IMAGE_DIR
+        )
 
-# ============================================================
-# CLEAN OLD FILES
-# ============================================================
-
-def clean_old_files():
-
-    if IMG.exists():
-
-        for file in IMG.iterdir():
-
-            if file.is_file():
-
-                try:
-                    file.unlink()
-                except Exception:
-                    pass
+    for filename in [
+        VIDEO_FILE,
+        REPORT_FILE,
+        OUTPUT_DIR / "voice.mp3",
+        OUTPUT_DIR / "images.txt"
+    ]:
+        if filename.exists():
+            filename.unlink()
 
 
 # ============================================================
-# MAIN
+# MAIN FACTORY
 # ============================================================
 
 def main():
 
-    print("")
-    print("=" * 60)
-    print("          ACURIVO DAILY AI FACTORY")
-    print("=" * 60)
-    print("")
-
-    clean_old_files()
-
-    results = discover_videos()
-
-    topic, original, source = choose_topic(
-        results
+    print(
+        "\n"
+        "====================================================\n"
+        "        ACURIVO VIDEO FACTORY v2\n"
+        "  TOPIC-AWARE VISUALS + EXACT AUDIO TIMING\n"
+        "====================================================\n"
     )
 
-    save_report(
-        topic,
-        original,
-        source
-    )
+    cleanup_old_files()
 
-    script = build_script(
+    # --------------------------------------------------------
+    # 1. Find topic
+    # --------------------------------------------------------
+
+    topic = search_youtube_topics()
+
+    # --------------------------------------------------------
+    # 2. Arabic topic
+    # --------------------------------------------------------
+
+    topic_ar = translate_to_arabic(
         topic
     )
 
-    print("")
-    print(
-        "ORIGINAL ARABIC SCRIPT CREATED"
-    )
-    print("")
+    # --------------------------------------------------------
+    # 3. Create complete script
+    # --------------------------------------------------------
 
-    audio = make_voice(
+    script = create_script(
+        topic_ar
+    )
+
+    # --------------------------------------------------------
+    # 4. Create voice first
+    # --------------------------------------------------------
+
+    audio_file = create_audio(
         script
     )
 
-    images = make_scenes(
+    # --------------------------------------------------------
+    # 5. Get exact audio duration
+    # --------------------------------------------------------
+
+    audio_duration = get_audio_duration(
+        audio_file
+    )
+
+    # --------------------------------------------------------
+    # 6. Search topic-related images
+    # --------------------------------------------------------
+
+    images = download_related_images(
         topic
     )
 
-    video = make_video(
-        images,
-        audio
+    # --------------------------------------------------------
+    # 7. Fallback if necessary
+    # --------------------------------------------------------
+
+    if len(images) < 4:
+
+        extra = download_fallback_images()
+
+        images.extend(
+            extra
+        )
+
+    if not images:
+        raise RuntimeError(
+            "لم يتم العثور على أي صور."
+        )
+
+    images = images[:MAX_IMAGES]
+
+    # --------------------------------------------------------
+    # 8. Normalize images
+    # --------------------------------------------------------
+
+    normalized = normalize_images(
+        images
     )
 
-    print("")
-    print("=" * 60)
-    print("       ACURIVO VIDEO CREATED")
-    print("=" * 60)
+    # --------------------------------------------------------
+    # 9. Build video to exact audio duration
+    # --------------------------------------------------------
+
+    video = create_video(
+        normalized,
+        audio_file,
+        audio_duration
+    )
+
+    # --------------------------------------------------------
+    # 10. Final duration
+    # --------------------------------------------------------
+
+    video_duration = get_video_duration()
+
+    # --------------------------------------------------------
+    # 11. Report
+    # --------------------------------------------------------
+
+    create_report(
+        topic,
+        topic_ar,
+        script,
+        audio_duration,
+        video_duration,
+        len(normalized)
+    )
+
     print(
-        "TOPIC:",
-        topic
+        "\n"
+        "====================================================\n"
+        "             ACURIVO BUILD COMPLETE\n"
+        "====================================================\n"
     )
+
     print(
         "VIDEO:",
         video
     )
-    print("=" * 60)
 
+    print(
+        f"AUDIO DURATION: "
+        f"{audio_duration:.2f}s"
+    )
+
+    print(
+        f"VIDEO DURATION: "
+        f"{video_duration:.2f}s"
+    )
+
+    print(
+        "VISUALS:",
+        len(normalized)
+    )
+
+    print(
+        "STATUS: SUCCESS"
+    )
+
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
-
     main()
