@@ -15,7 +15,7 @@ from ddgs import DDGS
 
 # ============================================================
 # ACURIVO VIDEO FACTORY
-# V11.1 — FIXED DYNAMIC VISUAL ENGINE
+# V11.2 — FIXED DDGS IMAGE DIMENSIONS
 # ============================================================
 
 ROOT = Path(__file__).resolve().parent
@@ -347,7 +347,15 @@ SCENES = [
 # ============================================================
 
 def run(cmd, check=True):
-    print("RUN:", " ".join(str(x) for x in cmd))
+
+    print(
+        "RUN:",
+        " ".join(
+            str(x)
+            for x in cmd
+        ),
+    )
+
     return subprocess.run(
         cmd,
         check=check,
@@ -388,17 +396,21 @@ def ffprobe_duration(path):
 def clean_work():
 
     if WORK_DIR.exists():
+
         for item in WORK_DIR.iterdir():
 
             if item.is_dir():
+
                 shutil.rmtree(
                     item,
                     ignore_errors=True,
                 )
 
             else:
+
                 try:
                     item.unlink()
+
                 except Exception:
                     pass
 
@@ -407,7 +419,10 @@ def clean_work():
 # VOICE
 # ============================================================
 
-async def make_voice(text, output):
+async def make_voice(
+    text,
+    output,
+):
 
     communicate = edge_tts.Communicate(
         text=text,
@@ -423,7 +438,9 @@ async def make_voice(text, output):
 
 def create_voice(text):
 
-    print("CREATING SAUDI ARABIC VOICE...")
+    print(
+        "CREATING SAUDI ARABIC VOICE..."
+    )
 
     asyncio.run(
         make_voice(
@@ -436,6 +453,7 @@ def create_voice(text):
         not AUDIO_RAW.exists()
         or AUDIO_RAW.stat().st_size < 10000
     ):
+
         raise RuntimeError(
             "Voice generation failed."
         )
@@ -448,7 +466,9 @@ def create_voice(text):
 
 def master_voice():
 
-    print("MASTERING VOICE...")
+    print(
+        "MASTERING VOICE..."
+    )
 
     audio_filter = (
         "highpass=f=65,"
@@ -482,14 +502,19 @@ def master_voice():
         ]
     )
 
-    print("VOICE MASTERED.")
+    print(
+        "VOICE MASTERED."
+    )
 
 
 # ============================================================
 # IMAGE SEARCH
 # ============================================================
 
-def ddgs_search(query, count=18):
+def ddgs_search(
+    query,
+    count=18,
+):
 
     print(
         f"IMAGE SEARCH: {query}"
@@ -509,7 +534,9 @@ def ddgs_search(query, count=18):
             max_results=count,
         )
 
-        results = list(results)
+        results = list(
+            results
+        )
 
         print(
             f"FOUND {len(results)} IMAGE RESULTS"
@@ -528,6 +555,37 @@ def ddgs_search(query, count=18):
 
 
 # ============================================================
+# IMAGE DIMENSION SAFETY
+# ============================================================
+
+def image_area(result):
+
+    try:
+
+        width = int(
+            result.get("width") or 0
+        )
+
+    except Exception:
+
+        width = 0
+
+    try:
+
+        height = int(
+            result.get("height") or 0
+        )
+
+    except Exception:
+
+        height = 0
+
+    return (
+        width * height
+    )
+
+
+# ============================================================
 # IMAGE URLS
 # ============================================================
 
@@ -540,13 +598,18 @@ def candidate_urls(result):
         "thumbnail",
     ):
 
-        value = result.get(key)
+        value = result.get(
+            key
+        )
 
         if (
             isinstance(value, str)
             and value.startswith("http")
         ):
-            urls.append(value)
+
+            urls.append(
+                value
+            )
 
     return urls
 
@@ -555,11 +618,15 @@ def candidate_urls(result):
 # DOWNLOAD IMAGE
 # ============================================================
 
-def download_image(url, output):
+def download_image(
+    url,
+    output,
+):
 
     try:
 
         if url in USED_IMAGE_URLS:
+
             return False
 
         response = requests.get(
@@ -584,7 +651,10 @@ def download_image(url, output):
 
         content_type = (
             response.headers
-            .get("Content-Type", "")
+            .get(
+                "Content-Type",
+                "",
+            )
             .lower()
         )
 
@@ -597,15 +667,23 @@ def download_image(url, output):
             if not chunk:
                 continue
 
-            data.extend(chunk)
+            data.extend(
+                chunk
+            )
 
-            if len(data) > MAX_IMAGE_BYTES:
+            if (
+                len(data)
+                > MAX_IMAGE_BYTES
+            ):
 
                 raise RuntimeError(
                     "Image too large."
                 )
 
-        if len(data) < MIN_IMAGE_BYTES:
+        if (
+            len(data)
+            < MIN_IMAGE_BYTES
+        ):
 
             raise RuntimeError(
                 "Image too small."
@@ -625,25 +703,38 @@ def download_image(url, output):
             bytes(data)
         )
 
-        with Image.open(output) as img:
+        with Image.open(
+            output
+        ) as img:
+
             img.verify()
 
-        with Image.open(output) as img:
+        with Image.open(
+            output
+        ) as img:
 
             img.load()
 
-            width, height = img.size
+            width, height = (
+                img.size
+            )
 
             if (
                 width < 300
                 or height < 300
             ):
+
                 raise RuntimeError(
                     "Image resolution too small."
                 )
 
-        USED_IMAGE_URLS.add(url)
-        USED_IMAGE_HASHES.add(digest)
+        USED_IMAGE_URLS.add(
+            url
+        )
+
+        USED_IMAGE_HASHES.add(
+            digest
+        )
 
         print(
             "IMAGE OK:",
@@ -661,10 +752,13 @@ def download_image(url, output):
         )
 
         try:
+
             output.unlink(
                 missing_ok=True
             )
+
         except Exception:
+
             pass
 
         return False
@@ -679,12 +773,15 @@ def download_from_result(
     output,
 ):
 
-    for url in candidate_urls(result):
+    for url in candidate_urls(
+        result
+    ):
 
         if download_image(
             url,
             output,
         ):
+
             return True
 
     return False
@@ -726,13 +823,14 @@ def search_scene_images(
             18,
         )
 
-        # Larger images first.
+        # ====================================================
+        # FIX V11.2
+        # DDGS may return width/height as strings.
+        # Convert them safely before multiplication.
+        # ====================================================
+
         results.sort(
-            key=lambda item: (
-                (item.get("width") or 0)
-                *
-                (item.get("height") or 0)
-            ),
+            key=image_area,
             reverse=True,
         )
 
@@ -777,6 +875,12 @@ def search_scene_images(
                 15,
             )
 
+            # Same safety protection
+            results.sort(
+                key=image_area,
+                reverse=True,
+            )
+
             for result in results:
 
                 if len(selected) >= wanted:
@@ -813,9 +917,13 @@ def prepare_image(
     destination,
 ):
 
-    with Image.open(source) as img:
+    with Image.open(
+        source
+    ) as img:
 
-        img = img.convert("RGB")
+        img = img.convert(
+            "RGB"
+        )
 
         img = ImageOps.fit(
             img,
@@ -832,11 +940,15 @@ def prepare_image(
 
         img = ImageEnhance.Contrast(
             img
-        ).enhance(1.06)
+        ).enhance(
+            1.06
+        )
 
         img = ImageEnhance.Color(
             img
-        ).enhance(1.04)
+        ).enhance(
+            1.04
+        )
 
         img = img.filter(
             ImageFilter.UnsharpMask(
@@ -875,35 +987,38 @@ def create_motion_clip(
         prepared,
     )
 
-    # IMPORTANT:
-    # These are numeric values.
-    # No string multiplication.
     motions = [
+
         {
             "zoom": 0.00035,
             "x": 0.00018,
             "y": 0.00000,
         },
+
         {
             "zoom": 0.00045,
             "x": -0.00018,
             "y": 0.00004,
         },
+
         {
             "zoom": -0.00030,
             "x": 0.00016,
             "y": -0.00005,
         },
+
         {
             "zoom": 0.00030,
             "x": -0.00016,
             "y": -0.00004,
         },
+
         {
             "zoom": -0.00025,
             "x": 0.00012,
             "y": 0.00005,
         },
+
         {
             "zoom": 0.00040,
             "x": -0.00012,
@@ -912,7 +1027,8 @@ def create_motion_clip(
     ]
 
     motion = motions[
-        motion_index % len(motions)
+        motion_index
+        % len(motions)
     ]
 
     frames = max(
@@ -922,13 +1038,17 @@ def create_motion_clip(
         ),
     )
 
-    zoom_step = motion["zoom"]
-    x_step = motion["x"]
-    y_step = motion["y"]
+    zoom_step = motion[
+        "zoom"
+    ]
 
-    # Build expressions as strings ONLY
-    # for FFmpeg. Mathematical values
-    # themselves remain numeric above.
+    x_step = motion[
+        "x"
+    ]
+
+    y_step = motion[
+        "y"
+    ]
 
     if zoom_step >= 0:
 
@@ -1012,10 +1132,14 @@ def build_video():
     )
 
     weights = [
+
         max(
             1,
-            len(scene["text"]),
+            len(
+                scene["text"]
+            ),
         )
+
         for scene in SCENES
     ]
 
@@ -1024,9 +1148,11 @@ def build_video():
     )
 
     scene_durations = [
+
         audio_duration
         * weight
         / total_weight
+
         for weight in weights
     ]
 
@@ -1078,7 +1204,6 @@ def build_video():
                 f"for scene {index}."
             )
 
-        # Never leave a scene completely static.
         if len(images) == 1:
 
             images = [
@@ -1314,25 +1439,32 @@ def build_video():
     print(
         "=" * 70
     )
+
     print(
         "ACURIVO VIDEO COMPLETE"
     )
+
     print(
         "=" * 70
     )
+
     print(
         f"TITLE: {TITLE}"
     )
+
     print(
         f"SIZE: {final_size:.2f} MB"
     )
+
     print(
         f"DURATION: "
         f"{ffprobe_duration(VIDEO_FILE):.2f} sec"
     )
+
     print(
         f"FILE: {VIDEO_FILE}"
     )
+
     print(
         "=" * 70
     )
@@ -1345,19 +1477,24 @@ def build_video():
 def main():
 
     print()
+
     print(
         "=" * 70
     )
+
     print(
-        "ACURIVO VIDEO FACTORY V11.1"
+        "ACURIVO VIDEO FACTORY V11.2"
     )
+
     print(
         "=" * 70
     )
+
     print(
         "TOPIC:",
         TITLE,
     )
+
     print(
         "=" * 70
     )
@@ -1378,6 +1515,7 @@ def main():
     build_video()
 
     print()
+
     print(
         "ACURIVO FACTORY "
         "FINISHED SUCCESSFULLY."
@@ -1393,6 +1531,7 @@ if __name__ == "__main__":
     except Exception as e:
 
         print()
+
         print(
             "FATAL ERROR:"
         )
