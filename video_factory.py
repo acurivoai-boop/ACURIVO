@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
 # ============================================================
-# ACURIVO VIDEO FACTORY V10
+# ACURIVO VIDEO FACTORY - PRODUCTION V1
 # ============================================================
 
 ROOT = Path(__file__).resolve().parent
@@ -38,6 +38,7 @@ FPS = 30
 
 IMAGE_TIMEOUT = 10
 IMAGE_MIN_BYTES = 5000
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) "
@@ -615,8 +616,6 @@ def master_audio():
     if AUDIO_FINAL.exists():
         AUDIO_FINAL.unlink()
 
-    # Deliberately conservative FFmpeg filter chain.
-    # No unsupported compressor syntax.
     audio_filter = (
         "highpass=f=65,"
         "lowpass=f=15500,"
@@ -630,19 +629,14 @@ def master_audio():
     run([
         "ffmpeg",
         "-y",
-
         "-i",
         str(AUDIO_RAW),
-
         "-af",
         audio_filter,
-
         "-codec:a",
         "libmp3lame",
-
         "-b:a",
         "192k",
-
         str(AUDIO_FINAL),
     ])
 
@@ -949,7 +943,6 @@ def score_image(
     for word in useful:
 
         if word in combined:
-
             score += 2
 
     return score
@@ -961,7 +954,6 @@ def select_image(
 ):
 
     if not candidates:
-
         return None
 
     ranked = sorted(
@@ -970,12 +962,10 @@ def select_image(
 
         key=lambda item:
         score_image(
-
             item.get(
                 "title",
                 ""
             ),
-
             query
         ),
 
@@ -986,7 +976,7 @@ def select_image(
 
 
 # ============================================================
-# SAFE IMAGE DOWNLOAD
+# SAFE IMAGE DOWNLOAD - FIXED
 # ============================================================
 
 def download_image(
@@ -996,26 +986,84 @@ def download_image(
 
     try:
 
-        request = urllib.request.Request(
+        print(
+            "DOWNLOADING IMAGE..."
+        )
+
+        response = requests.get(
 
             url,
 
             headers={
                 "User-Agent": USER_AGENT
-            }
+            },
+
+            timeout=(
+                5,
+                IMAGE_TIMEOUT
+            ),
+
+            stream=True,
+
+            allow_redirects=True,
         )
 
-        with urllib.request.urlopen(
+        response.raise_for_status()
 
-            request,
-
-            timeout=IMAGE_TIMEOUT
-
-        ) as response:
-
-            data = response.read(
-                IMAGE_MIN_BYTES * 100
+        content_type = (
+            response.headers
+            .get(
+                "Content-Type",
+                ""
             )
+            .lower()
+        )
+
+        if not content_type.startswith(
+            "image/"
+        ):
+
+            raise RuntimeError(
+                f"Invalid content type: "
+                f"{content_type}"
+            )
+
+        content_length = (
+            response.headers
+            .get(
+                "Content-Length"
+            )
+        )
+
+        if content_length:
+
+            try:
+
+                if int(content_length) > MAX_IMAGE_BYTES:
+
+                    raise RuntimeError(
+                        "Image exceeds maximum size."
+                    )
+
+            except ValueError:
+                pass
+
+        data = bytearray()
+
+        for chunk in response.iter_content(
+            chunk_size=64 * 1024
+        ):
+
+            if not chunk:
+                continue
+
+            data.extend(chunk)
+
+            if len(data) > MAX_IMAGE_BYTES:
+
+                raise RuntimeError(
+                    "Image exceeds maximum size."
+                )
 
         if len(data) < IMAGE_MIN_BYTES:
 
@@ -1024,14 +1072,36 @@ def download_image(
             )
 
         output.write_bytes(
-            data
+            bytes(data)
         )
 
+        # First integrity check
         with Image.open(
             output
         ) as img:
 
             img.verify()
+
+        # Second check:
+        # actually load all pixels
+        with Image.open(
+            output
+        ) as img:
+
+            img.load()
+
+            width, height = img.size
+
+            if width < 300 or height < 300:
+
+                raise RuntimeError(
+                    "Image resolution is too small."
+                )
+
+        print(
+            f"IMAGE OK: "
+            f"{len(data) / 1024 / 1024:.2f} MB"
+        )
 
         return True
 
@@ -1204,8 +1274,6 @@ def create_fallback_image(
 
     for word in words:
 
-        # Only Latin words are rendered here.
-        # This avoids Arabic font failures.
         if re.fullmatch(
             r"[A-Za-z0-9]+",
             word
@@ -1337,12 +1405,12 @@ def create_scene_image(
             query
         )
 
-        for item in results:
+        existing = {
+            x["url"]
+            for x in candidates
+        }
 
-            existing = {
-                x["url"]
-                for x in candidates
-            }
+        for item in results:
 
             if item["url"] not in existing:
 
@@ -1350,7 +1418,7 @@ def create_scene_image(
                     item
                 )
 
-        if len(candidates) >= 10:
+        if len(candidates) >= 12:
             break
 
     # --------------------------------------------------------
@@ -1383,17 +1451,35 @@ def create_scene_image(
 
     if not candidates:
 
-        for word in keyword_tokens(
-            topic
-        )[:5]:
+        topic_queries = []
 
-            print(
-                "TOPIC SEARCH:",
+        topic_words = keyword_tokens(
+            topic
+        )
+
+        if topic_words:
+
+            topic_queries.append(
+                " ".join(
+                    topic_words[:4]
+                )
+            )
+
+        for word in topic_words[:5]:
+
+            topic_queries.append(
                 word
             )
 
+        for query in topic_queries:
+
+            print(
+                "TOPIC SEARCH:",
+                query
+            )
+
             results = search_wikimedia(
-                word
+                query
             )
 
             candidates.extend(
@@ -1439,7 +1525,21 @@ def create_scene_image(
             reverse=True
         )
 
-        for selected in ranked[:5]:
+        attempted = set()
+
+        for selected in ranked:
+
+            url = selected.get(
+                "url"
+            )
+
+            if not url:
+                continue
+
+            if url in attempted:
+                continue
+
+            attempted.add(url)
 
             print(
                 "TRY IMAGE:",
@@ -1451,23 +1551,41 @@ def create_scene_image(
 
             if download_image(
 
-                selected["url"],
+                url,
 
                 raw
             ):
 
-                prepare_image(
+                try:
 
-                    raw,
+                    prepare_image(
 
-                    final
-                )
+                        raw,
 
-                print(
-                    "VISUAL READY."
-                )
+                        final
+                    )
 
-                return final
+                    print(
+                        "VISUAL READY."
+                    )
+
+                    return final
+
+                except Exception as e:
+
+                    print(
+                        "Image preparation failed:",
+                        e
+                    )
+
+                    try:
+
+                        raw.unlink(
+                            missing_ok=True
+                        )
+
+                    except Exception:
+                        pass
 
     # --------------------------------------------------------
     # Guaranteed fallback
@@ -1900,18 +2018,22 @@ def main():
     )
 
     print(
-        "ACURIVO VIDEO FACTORY V10"
+        "ACURIVO VIDEO FACTORY - PRODUCTION V1"
     )
 
     print(
         "=" * 60
     )
 
+    # --------------------------------------------------------
     # 1. Discover topic
+    # --------------------------------------------------------
 
     topic = discover_topic()
 
+    # --------------------------------------------------------
     # 2. Build script
+    # --------------------------------------------------------
 
     scenes = build_script(
         topic
@@ -1956,7 +2078,9 @@ def main():
         encoding="utf-8"
     )
 
+    # --------------------------------------------------------
     # 3. Generate voices
+    # --------------------------------------------------------
 
     scene_audios = (
         generate_scene_audios(
@@ -1964,7 +2088,9 @@ def main():
         )
     )
 
+    # --------------------------------------------------------
     # 4. Master audio
+    # --------------------------------------------------------
 
     concatenate_audio(
 
@@ -1975,7 +2101,9 @@ def main():
 
     master_audio()
 
+    # --------------------------------------------------------
     # 5. Create visuals
+    # --------------------------------------------------------
 
     scene_images = []
 
@@ -1997,7 +2125,9 @@ def main():
             image
         )
 
+    # --------------------------------------------------------
     # 6. Render scenes
+    # --------------------------------------------------------
 
     scene_videos = []
 
@@ -2027,7 +2157,9 @@ def main():
             video
         )
 
+    # --------------------------------------------------------
     # 7. Concatenate scenes
+    # --------------------------------------------------------
 
     concat_video = (
         concatenate_video(
@@ -2035,13 +2167,17 @@ def main():
         )
     )
 
+    # --------------------------------------------------------
     # 8. Final mux
+    # --------------------------------------------------------
 
     mux_final_video(
         concat_video
     )
 
+    # --------------------------------------------------------
     # 9. Final verification
+    # --------------------------------------------------------
 
     final_duration = (
         ffprobe_duration(
