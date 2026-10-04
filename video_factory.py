@@ -1,9 +1,5 @@
 import os
 import re
-import json
-import math
-import time
-import random
 import subprocess
 import urllib.parse
 import urllib.request
@@ -14,7 +10,7 @@ from PIL import Image
 
 
 # ============================================================
-# ACURIVO VIDEO FACTORY V5
+# ACURIVO VIDEO FACTORY V5.1
 # Cinematic Arabic Documentary Engine
 # ============================================================
 
@@ -26,6 +22,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 WORK_DIR.mkdir(exist_ok=True)
 
 VIDEO_PATH = OUTPUT_DIR / "ACURIVO_VIDEO.mp4"
+
 AUDIO_RAW = WORK_DIR / "voice_raw.mp3"
 AUDIO_FINAL = WORK_DIR / "voice_final.mp3"
 
@@ -33,15 +30,13 @@ WIDTH = 1920
 HEIGHT = 1080
 
 VOICE = "ar-SA-HamedNeural"
-
-# أبطأ قليلًا من القراءة الآلية
 VOICE_RATE = "-8%"
 
-# عدد المشاهد
 SCENE_COUNT = 8
 
+
 # ============================================================
-# Utilities
+# BASIC UTILITIES
 # ============================================================
 
 def run(cmd):
@@ -75,48 +70,69 @@ def clean_text(text):
 
 
 # ============================================================
-# Topic discovery
+# CLEAN OLD WORK FILES
+# ============================================================
+
+def cleanup():
+
+    print("\nCLEANING WORK DIRECTORY...")
+
+    WORK_DIR.mkdir(exist_ok=True)
+
+    for item in WORK_DIR.iterdir():
+
+        try:
+            if item.is_file():
+                item.unlink()
+        except Exception:
+            pass
+
+
+# ============================================================
+# TOPIC DISCOVERY
 # ============================================================
 
 def discover_topic():
-    print("\nDISCOVERING TOPIC...")
+
+    print("\nDISCOVERING MODERN TOPIC...")
 
     queries = [
-        "latest technology breakthrough",
-        "future technology",
-        "artificial intelligence breakthrough",
-        "new scientific discovery",
-        "future of energy",
-        "space technology",
-        "robotics future",
-        "new invention",
-        "advanced technology 2026",
-        "science technology future",
+        "latest AI technology 2026",
+        "new technology breakthrough 2026",
+        "future technology 2026",
+        "artificial intelligence breakthrough 2026",
+        "new science discovery 2026",
+        "robotics breakthrough 2026",
+        "future energy technology 2026",
+        "space technology 2026",
     ]
 
     candidates = []
 
-    for q in queries:
+    for query in queries:
+
         try:
-            encoded = urllib.parse.quote(q)
+
+            encoded = urllib.parse.quote(query)
 
             url = (
                 "https://www.youtube.com/results?"
                 f"search_query={encoded}"
             )
 
-            req = urllib.request.Request(
+            request = urllib.request.Request(
                 url,
                 headers={
                     "User-Agent":
-                    "Mozilla/5.0 (X11; Linux x86_64) "
+                    "Mozilla/5.0 "
+                    "(X11; Linux x86_64) "
                     "AppleWebKit/537.36 "
                     "Chrome/120 Safari/537.36"
                 },
             )
 
             html = urllib.request.urlopen(
-                req,
+                request,
                 timeout=20
             ).read().decode(
                 "utf-8",
@@ -128,163 +144,207 @@ def discover_topic():
                 html
             )
 
-            for title in titles[:8]:
+            for title in titles[:10]:
+
                 title = (
                     title
                     .replace("\\u0026", "&")
-                    .replace("\\\"", '"')
+                    .replace('\\"', '"')
                 )
 
-                if len(title) > 15:
+                if len(title) >= 15:
                     candidates.append(title)
 
-        except Exception as e:
-            print("Topic search error:", e)
+        except Exception as error:
+
+            print(
+                "Topic discovery error:",
+                error
+            )
 
     if not candidates:
-        return "كيف تغيّر الذكاء الاصطناعي طريقة عمل العالم؟"
 
-    # إزالة التكرار
+        return (
+            "كيف يغيّر الذكاء الاصطناعي "
+            "شكل المستقبل؟"
+        )
+
     unique = []
 
-    for item in candidates:
-        if item not in unique:
-            unique.append(item)
+    for title in candidates:
 
-    # نختار موضوعًا يبدو مناسبًا لفيديو وثائقي
-    preferred = []
+        if title not in unique:
+            unique.append(title)
 
+    # Score modern / interesting topics
     keywords = [
         "AI",
-        "artificial",
+        "artificial intelligence",
         "technology",
         "future",
         "robot",
         "science",
         "energy",
         "space",
-        "innovation",
+        "quantum",
+        "breakthrough",
         "new",
         "2026",
     ]
 
+    scored = []
+
     for title in unique:
+
         score = 0
 
         lower = title.lower()
 
-        for word in keywords:
-            if word.lower() in lower:
+        for keyword in keywords:
+
+            if keyword.lower() in lower:
                 score += 2
 
-        if 25 <= len(title) <= 110:
-            score += 2
+        if 25 <= len(title) <= 100:
+            score += 3
 
-        preferred.append((score, title))
+        scored.append(
+            (score, title)
+        )
 
-    preferred.sort(
-        key=lambda x: x[0],
+    scored.sort(
+        key=lambda item: item[0],
         reverse=True
     )
 
-    topic = preferred[0][1]
+    topic = scored[0][1]
 
-    print("SELECTED TOPIC:", topic)
+    print(
+        "\nSELECTED TOPIC:",
+        topic
+    )
 
     return topic
 
 
 # ============================================================
-# Arabic documentary script
+# DOCUMENTARY SCRIPT
 # ============================================================
 
 def build_script(topic):
 
-    # النص هنا مكتوب ليُقرأ كتعليق وثائقي،
-    # وليس كمقالة.
-
     return f"""
-هناك أشياء تتغير أمام أعيننا...
-لكننا لا نلاحظها إلا بعد فوات الوقت.
+هناك تغيّرات تحدث الآن...
+وقد لا ندرك حجمها إلا بعد سنوات.
 
-ومن بين أكثر التحولات إثارة للاهتمام اليوم:
+ومن بين أكثرها إثارة للاهتمام:
 {topic}.
 
-الفكرة في ظاهرها قد تبدو بسيطة.
-لكن خلفها...
-هناك سباق هائل بين العلم، والاقتصاد، والإنسان.
+في البداية، قد يبدو الأمر مجرد تطور تقني جديد.
+لكن الصورة أكبر من ذلك بكثير.
 
-خلال السنوات الأخيرة، لم تعد هذه التقنيات مجرد أفكار بعيدة.
-بدأت تدخل إلى حياتنا...
-وتغيّر الطريقة التي نعمل بها،
-ونتخذ بها قراراتنا،
-وننظر بها إلى المستقبل.
+وراء هذا التطور...
+هناك علماء، وشركات، واستثمارات ضخمة،
+ومنافسة عالمية على الوصول إلى المستقبل أولًا.
 
-واللافت هنا...
-أن التطور لا يحدث في مكان واحد.
+والأهم...
+أن هذه التقنيات بدأت تنتقل من المختبرات
+إلى العالم الحقيقي.
 
-هناك مختبرات تعمل على حلول جديدة،
-وشركات تستثمر مليارات الدولارات،
-وباحثون يحاولون دفع الحدود أبعد من أي وقت مضى.
+تدخل في الأعمال،
+وفي الصناعة،
+وفي طريقة اتخاذ القرارات.
 
-لكن السؤال الحقيقي ليس:
+وهنا يبدأ السؤال الحقيقي.
+
+ليس فقط...
 ماذا تستطيع التقنية أن تفعل؟
 
-السؤال الأهم هو...
+بل...
 إلى أين يمكن أن تقودنا؟
 
-فكل تقدم كبير يحمل معه فرصة.
+لأن كل قفزة تقنية كبيرة
+تفتح بابًا جديدًا من الفرص.
+
 وفي الوقت نفسه...
-يفتح بابًا جديدًا من الأسئلة.
+تطرح أسئلة لم تكن موجودة من قبل.
 
-وهذا تحديدًا ما يجعل {topic}
-أكثر من مجرد خبر عابر.
+ولهذا السبب،
+فإن {topic}
+ليس مجرد خبر عابر.
 
-إنه جزء من قصة أكبر...
-قصة مستقبل يتشكل الآن.
+إنه جزء من تحول أكبر...
+
+تحول بدأ بالفعل،
+وربما يكون تأثيره على حياتنا
+أكبر مما نتوقع.
 """.strip()
 
 
 # ============================================================
-# Text preparation
+# SPEECH PREPARATION
 # ============================================================
 
 def prepare_for_speech(text):
 
-    # تحسين الوقفات
-    text = text.replace("...", "…")
-
-    # وقفة قصيرة بعد الفواصل
-    text = re.sub(r",\s*", ", ", text)
-
-    # منع الجمل الطويلة جدًا
+    # تحسين علامات الوقف
     text = text.replace(
-        "لكن السؤال الحقيقي ليس:",
-        "لكن السؤال الحقيقي... ليس:"
+        "...",
+        "…"
+    )
+
+    # تقليل التشكيل/الرموز التي قد تربك TTS
+    text = text.replace(
+        "—",
+        ","
     )
 
     text = text.replace(
-        "السؤال الأهم هو...",
-        "السؤال الأهم... هو:"
+        "–",
+        ","
     )
 
-    return clean_text(text)
+    text = text.replace(
+        "«",
+        ""
+    )
+
+    text = text.replace(
+        "»",
+        ""
+    )
+
+    # تنظيف المسافات
+    text = clean_text(text)
+
+    return text
 
 
 # ============================================================
-# Generate voice
+# GENERATE VOICE
 # ============================================================
 
 def generate_voice(text):
 
-    print("\nGENERATING ARABIC VOICE...")
+    print(
+        "\nGENERATING ARABIC DOCUMENTARY VOICE..."
+    )
 
-    script_path = WORK_DIR / "script.txt"
+    script_path = (
+        WORK_DIR /
+        "script.txt"
+    )
 
     script_path.write_text(
         text,
         encoding="utf-8"
     )
+
+    # --------------------------------------------------------
+    # مهم:
+    # استخدام --file بدل --text
+    # لتجنب مشكلة Edge TTS السابقة
+    # --------------------------------------------------------
 
     run([
         "edge-tts",
@@ -292,45 +352,53 @@ def generate_voice(text):
         VOICE,
         "--rate",
         VOICE_RATE,
-        "--text",
-        text,
+        "--file",
+        str(script_path),
         "--write-media",
         str(AUDIO_RAW),
     ])
 
-    print("RAW AUDIO GENERATED")
-
-    duration = ffprobe_duration(AUDIO_RAW)
+    raw_duration = ffprobe_duration(
+        AUDIO_RAW
+    )
 
     print(
-        f"RAW AUDIO DURATION: {duration:.2f}s"
+        f"RAW VOICE: "
+        f"{raw_duration:.2f}s"
     )
 
     # --------------------------------------------------------
-    # Cinematic audio processing
+    # CINEMATIC AUDIO MASTERING
     # --------------------------------------------------------
 
-    print("\nADDING CINEMATIC VOICE PROCESSING...")
+    print(
+        "\nAPPLYING CINEMATIC AUDIO MASTERING..."
+    )
 
-    filter_complex = (
-        "highpass=f=75,"
-        "lowpass=f=14500,"
+    audio_filter = (
+        "highpass=f=70,"
+        "lowpass=f=15000,"
         "acompressor="
         "threshold=-18dB:"
-        "ratio=2.2:"
-        "attack=20:"
+        "ratio=2.0:"
+        "attack=18:"
         "release=180,"
         "equalizer="
-        "f=2500:"
+        "f=180:"
         "width_type=o:"
-        "width=1.2:"
-        "g=1.5,"
+        "width=1.0:"
+        "g=0.8,"
+        "equalizer="
+        "f=2800:"
+        "width_type=o:"
+        "width=1.1:"
+        "g=1.2,"
         "aecho="
-        "0.8:"
-        "0.32:"
+        "0.75:"
+        "0.20:"
         "55:"
-        "0.16,"
-        "volume=1.05"
+        "0.10,"
+        "volume=1.04"
     )
 
     run([
@@ -339,7 +407,7 @@ def generate_voice(text):
         "-i",
         str(AUDIO_RAW),
         "-af",
-        filter_complex,
+        audio_filter,
         "-codec:a",
         "libmp3lame",
         "-b:a",
@@ -352,7 +420,7 @@ def generate_voice(text):
     )
 
     print(
-        f"FINAL AUDIO DURATION: "
+        f"MASTERED VOICE: "
         f"{final_duration:.2f}s"
     )
 
@@ -360,30 +428,52 @@ def generate_voice(text):
 
 
 # ============================================================
-# Semantic visual planning
+# SEMANTIC VISUAL PLAN
 # ============================================================
 
 def build_scene_queries(topic):
 
     return [
-        f"{topic} modern technology laboratory",
-        f"{topic} futuristic technology 2026",
+
+        # 1 — opening / world
+        f"{topic} modern world technology",
+
+        # 2 — research
         f"{topic} scientists research laboratory",
-        f"{topic} advanced artificial intelligence technology",
-        f"{topic} modern industrial technology",
-        f"{topic} futuristic city technology",
-        f"{topic} technology innovation close up",
-        f"{topic} future world cinematic",
+
+        # 3 — advanced technology
+        f"{topic} advanced technology futuristic",
+
+        # 4 — AI / computing
+        f"{topic} artificial intelligence computing",
+
+        # 5 — industry
+        f"{topic} modern industry technology",
+
+        # 6 — human interaction
+        f"{topic} people using advanced technology",
+
+        # 7 — future
+        f"{topic} future city technology",
+
+        # 8 — cinematic ending
+        f"{topic} futuristic world innovation",
     ]
 
 
 # ============================================================
-# Wikimedia image search
+# WIKIMEDIA SEARCH
 # ============================================================
 
-def search_wikimedia(query, limit=5):
+def search_wikimedia(
+    query,
+    limit=10
+):
 
-    print("IMAGE SEARCH:", query)
+    print(
+        "\nIMAGE QUERY:",
+        query
+    )
 
     params = {
         "action": "query",
@@ -398,20 +488,25 @@ def search_wikimedia(query, limit=5):
     }
 
     try:
+
         response = requests.get(
             "https://commons.wikimedia.org/w/api.php",
             params=params,
             timeout=30,
+            headers={
+                "User-Agent":
+                "ACURIVO/5.1"
+            },
         )
+
+        response.raise_for_status()
 
         data = response.json()
 
-        pages = data.get(
-            "query",
-            {}
-        ).get(
-            "pages",
-            {}
+        pages = (
+            data
+            .get("query", {})
+            .get("pages", {})
         )
 
         results = []
@@ -433,40 +528,48 @@ def search_wikimedia(query, limit=5):
                 ""
             )
 
-            if not mime.startswith("image/"):
+            if not mime.startswith(
+                "image/"
+            ):
                 continue
 
-            url = info.get(
-                "thumburl"
-            ) or info.get(
-                "url"
+            image_url = (
+                info.get("thumburl")
+                or info.get("url")
             )
 
-            if url:
+            title = page.get(
+                "title",
+                ""
+            )
+
+            if image_url:
+
                 results.append({
-                    "url": url,
-                    "title": page.get(
-                        "title",
-                        ""
-                    )
+                    "url": image_url,
+                    "title": title,
                 })
 
         return results
 
-    except Exception as e:
+    except Exception as error:
+
         print(
             "Wikimedia error:",
-            e
+            error
         )
 
         return []
 
 
 # ============================================================
-# Image download
+# DOWNLOAD + FORMAT IMAGE
 # ============================================================
 
-def download_image(url, path):
+def download_image(
+    url,
+    path
+):
 
     try:
 
@@ -475,49 +578,85 @@ def download_image(url, path):
             timeout=40,
             headers={
                 "User-Agent":
-                "ACURIVO/5.0"
+                "ACURIVO/5.1"
             },
         )
 
         response.raise_for_status()
 
         temp = path.with_suffix(
-            ".download"
+            ".tmp"
         )
 
         temp.write_bytes(
             response.content
         )
 
-        img = Image.open(
+        image = Image.open(
             temp
         ).convert("RGB")
 
-        # توحيد الحجم
-        img.thumbnail(
-            (1920, 1080),
+        # Crop to cinematic 16:9
+        target_ratio = (
+            WIDTH / HEIGHT
+        )
+
+        image_ratio = (
+            image.width /
+            image.height
+        )
+
+        if image_ratio > target_ratio:
+
+            new_width = int(
+                image.height *
+                target_ratio
+            )
+
+            left = (
+                image.width -
+                new_width
+            ) // 2
+
+            image = image.crop(
+                (
+                    left,
+                    0,
+                    left + new_width,
+                    image.height
+                )
+            )
+
+        else:
+
+            new_height = int(
+                image.width /
+                target_ratio
+            )
+
+            top = (
+                image.height -
+                new_height
+            ) // 2
+
+            image = image.crop(
+                (
+                    0,
+                    top,
+                    image.width,
+                    top + new_height
+                )
+            )
+
+        image = image.resize(
+            (
+                WIDTH,
+                HEIGHT
+            ),
             Image.Resampling.LANCZOS
         )
 
-        canvas = Image.new(
-            "RGB",
-            (1920, 1080)
-        )
-
-        x = (
-            1920 - img.width
-        ) // 2
-
-        y = (
-            1080 - img.height
-        ) // 2
-
-        canvas.paste(
-            img,
-            (x, y)
-        )
-
-        canvas.save(
+        image.save(
             path,
             "JPEG",
             quality=94
@@ -529,23 +668,25 @@ def download_image(url, path):
 
         return True
 
-    except Exception as e:
+    except Exception as error:
 
         print(
-            "Download error:",
-            e
+            "IMAGE DOWNLOAD ERROR:",
+            error
         )
 
         return False
 
 
 # ============================================================
-# Build visual sequence
+# COLLECT VISUALS
 # ============================================================
 
 def collect_images(topic):
 
-    print("\nBUILDING VISUAL STORY...")
+    print(
+        "\nBUILDING SEMANTIC VISUAL STORY..."
+    )
 
     queries = build_scene_queries(
         topic
@@ -562,11 +703,12 @@ def collect_images(topic):
 
         results = search_wikimedia(
             query,
-            limit=8
+            limit=10
         )
 
         selected = None
 
+        # Prefer unique images
         for item in results:
 
             title = item["title"]
@@ -575,16 +717,18 @@ def collect_images(topic):
                 continue
 
             selected = item
-
             break
 
         if not selected:
+
             print(
-                f"NO GOOD IMAGE FOR SCENE {index}"
+                f"SCENE {index}: "
+                "NO UNIQUE IMAGE"
             )
+
             continue
 
-        filename = (
+        image_path = (
             WORK_DIR /
             f"scene_{index:02d}.jpg"
         )
@@ -596,7 +740,7 @@ def collect_images(topic):
 
         if download_image(
             selected["url"],
-            filename
+            image_path
         ):
 
             used_titles.add(
@@ -604,14 +748,103 @@ def collect_images(topic):
             )
 
             image_paths.append(
-                filename
+                image_path
             )
+
+    print(
+        "\nTOTAL VISUALS:",
+        len(image_paths)
+    )
 
     return image_paths
 
 
 # ============================================================
-# Cinematic scene rendering
+# RENDER ONE CINEMATIC SCENE
+# ============================================================
+
+def render_scene(
+    image,
+    output,
+    duration,
+    motion_type
+):
+
+    frames = max(
+        1,
+        int(duration * 30)
+    )
+
+    if motion_type == 0:
+
+        zoom = (
+            "zoompan="
+            f"z='min(zoom+0.0008,1.10)':"
+            "x='iw/2-(iw/zoom/2)':"
+            "y='ih/2-(ih/zoom/2)':"
+            f"d={frames}:"
+            "s=1920x1080:"
+            "fps=30"
+        )
+
+    elif motion_type == 1:
+
+        zoom = (
+            "zoompan="
+            f"z='min(zoom+0.0006,1.08)':"
+            "x='iw/2-(iw/zoom/2)':"
+            "y='ih/2-(ih/zoom/2)':"
+            f"d={frames}:"
+            "s=1920x1080:"
+            "fps=30"
+        )
+
+    else:
+
+        zoom = (
+            "zoompan="
+            f"z='min(zoom+0.0005,1.07)':"
+            "x='iw/2-(iw/zoom/2)':"
+            "y='ih/2-(ih/zoom/2)':"
+            f"d={frames}:"
+            "s=1920x1080:"
+            "fps=30"
+        )
+
+    vf = (
+        f"scale={WIDTH}:{HEIGHT}:"
+        "force_original_aspect_ratio=increase,"
+        f"crop={WIDTH}:{HEIGHT},"
+        "setsar=1,"
+        f"{zoom}"
+    )
+
+    run([
+        "ffmpeg",
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        str(image),
+        "-vf",
+        vf,
+        "-t",
+        f"{duration:.3f}",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-pix_fmt",
+        "yuv420p",
+        str(output),
+    ])
+
+
+# ============================================================
+# RENDER COMPLETE VIDEO
 # ============================================================
 
 def render_video(
@@ -619,28 +852,22 @@ def render_video(
     audio_duration
 ):
 
-    print("\nRENDERING CINEMATIC VIDEO...")
+    print(
+        "\nRENDERING FINAL CINEMATIC VIDEO..."
+    )
 
     if not images:
         raise RuntimeError(
-            "No images available."
+            "No usable images were found."
         )
 
     scene_count = len(images)
 
-    # توزيع دقيق للمدة
-    base_duration = (
+    # Exact equal distribution
+    duration_per_scene = (
         audio_duration /
         scene_count
     )
-
-    image_duration = (
-        base_duration + 0.25
-    )
-
-    # --------------------------------------------------------
-    # Create individual scenes
-    # --------------------------------------------------------
 
     scene_files = []
 
@@ -650,75 +877,22 @@ def render_video(
 
         scene_output = (
             WORK_DIR /
-            f"render_{index:02d}.mp4"
+            f"scene_video_{index:02d}.mp4"
         )
 
-        # تنويع الحركة
-        if index % 3 == 0:
-            zoom = (
-                "zoompan="
-                "z='min(zoom+0.0009,1.12)':"
-                "x='iw/2-(iw/zoom/2)':"
-                "y='ih/2-(ih/zoom/2)':"
-                "d=1"
-            )
-
-        elif index % 3 == 1:
-            zoom = (
-                "zoompan="
-                "z='min(zoom+0.0007,1.10)':"
-                "x='iw/2-(iw/zoom/2)':"
-                "y='ih/2-(ih/zoom/2)':"
-                "d=1"
-            )
-
-        else:
-            zoom = (
-                "zoompan="
-                "z='min(zoom+0.0006,1.08)':"
-                "x='iw/2-(iw/zoom/2)':"
-                "y='ih/2-(ih/zoom/2)':"
-                "d=1"
-            )
-
-        vf = (
-            f"scale={WIDTH}:{HEIGHT}:"
-            "force_original_aspect_ratio=increase,"
-            f"crop={WIDTH}:{HEIGHT},"
-            "setsar=1,"
-            f"{zoom},"
-            "fps=30"
+        render_scene(
+            image,
+            scene_output,
+            duration_per_scene + 0.12,
+            index % 3
         )
-
-        run([
-            "ffmpeg",
-            "-y",
-            "-loop",
-            "1",
-            "-i",
-            str(image),
-            "-vf",
-            vf,
-            "-t",
-            str(image_duration),
-            "-an",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "veryfast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            str(scene_output),
-        ])
 
         scene_files.append(
             scene_output
         )
 
     # --------------------------------------------------------
-    # Concatenate
+    # CONCAT FILE
     # --------------------------------------------------------
 
     concat_file = (
@@ -729,20 +903,23 @@ def render_video(
     with concat_file.open(
         "w",
         encoding="utf-8"
-    ) as f:
+    ) as file:
 
         for scene in scene_files:
 
-            f.write(
+            file.write(
                 "file '"
                 + str(scene)
-                .replace("'", "'\\''")
+                .replace(
+                    "'",
+                    "'\\''"
+                )
                 + "'\n"
             )
 
-    video_no_audio = (
+    video_only = (
         WORK_DIR /
-        "video_no_audio.mp4"
+        "video_only.mp4"
     )
 
     run([
@@ -756,18 +933,18 @@ def render_video(
         str(concat_file),
         "-c",
         "copy",
-        str(video_no_audio),
+        str(video_only),
     ])
 
     # --------------------------------------------------------
-    # Final audio + video
+    # FINAL VIDEO
     # --------------------------------------------------------
 
     run([
         "ffmpeg",
         "-y",
         "-i",
-        str(video_no_audio),
+        str(video_only),
         "-i",
         str(AUDIO_FINAL),
         "-map",
@@ -781,7 +958,7 @@ def render_video(
         "-b:a",
         "192k",
         "-t",
-        str(audio_duration),
+        f"{audio_duration:.3f}",
         "-movflags",
         "+faststart",
         str(VIDEO_PATH),
@@ -792,51 +969,38 @@ def render_video(
     )
 
     print(
-        "\nFINAL VIDEO DURATION:",
+        "\nFINAL VIDEO:",
+        VIDEO_PATH
+    )
+
+    print(
+        "FINAL DURATION:",
         f"{final_duration:.2f}s"
     )
 
-    if final_duration + 0.2 < audio_duration:
+    if final_duration + 0.15 < audio_duration:
+
         raise RuntimeError(
             "VIDEO ENDED BEFORE AUDIO."
         )
 
     print(
-        "VIDEO LENGTH CHECK: PASS"
+        "DURATION CHECK: PASS"
     )
 
 
 # ============================================================
-# Cleanup
-# ============================================================
-
-def cleanup():
-
-    print("\nCLEANUP...")
-
-    for item in WORK_DIR.iterdir():
-
-        try:
-
-            if item.is_file():
-                item.unlink()
-
-        except Exception:
-            pass
-
-
-# ============================================================
-# Main
+# MAIN
 # ============================================================
 
 def main():
 
     print(
         "\n"
-        "=====================================\n"
-        " ACURIVO VIDEO FACTORY V5\n"
+        "===========================================\n"
+        " ACURIVO VIDEO FACTORY V5.1\n"
         " CINEMATIC ARABIC DOCUMENTARY ENGINE\n"
-        "=====================================\n"
+        "===========================================\n"
     )
 
     cleanup()
@@ -852,10 +1016,14 @@ def main():
     )
 
     print(
-        "\nSCRIPT:\n"
+        "\n================ SCRIPT ================\n"
     )
 
     print(script)
+
+    print(
+        "\n=========================================\n"
+    )
 
     audio_duration = generate_voice(
         script
@@ -866,8 +1034,9 @@ def main():
     )
 
     if len(images) < 4:
+
         raise RuntimeError(
-            "Not enough relevant images."
+            "Not enough relevant visuals."
         )
 
     render_video(
@@ -876,20 +1045,15 @@ def main():
     )
 
     print(
-        "\n====================================="
+        "\n==========================================="
     )
 
     print(
-        "ACURIVO V5 COMPLETE"
+        "ACURIVO V5.1 COMPLETE"
     )
 
     print(
-        "VIDEO:",
-        VIDEO_PATH
-    )
-
-    print(
-        "=====================================\n"
+        "===========================================\n"
     )
 
 
