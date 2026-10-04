@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
 
 
 # ============================================================
-# ACURIVO VIDEO FACTORY V8
+# ACURIVO VIDEO FACTORY V9
 # ============================================================
 
 ROOT = Path(__file__).resolve().parent
@@ -25,6 +25,7 @@ WORK.mkdir(exist_ok=True)
 OUTPUT.mkdir(exist_ok=True)
 
 VIDEO_PATH = OUTPUT / "ACURIVO_VIDEO.mp4"
+
 AUDIO_RAW = WORK / "voice_raw.mp3"
 AUDIO_FINAL = WORK / "voice_final.mp3"
 
@@ -38,6 +39,9 @@ FPS = 30
 
 SCENE_COUNT = 8
 
+IMAGE_TIMEOUT = 12
+IMAGE_MIN_BYTES = 5000
+
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) "
     "AppleWebKit/537.36 Chrome/120 Safari/537.36"
@@ -49,6 +53,7 @@ USER_AGENT = (
 # ============================================================
 
 def run(cmd, check=True):
+
     print("RUN:", " ".join(str(x) for x in cmd))
 
     result = subprocess.run(
@@ -60,49 +65,86 @@ def run(cmd, check=True):
     )
 
     if result.stdout:
-        print(result.stdout[-4000:])
+        print(result.stdout[-3000:])
 
     return result
 
 
 def ffprobe_duration(path):
+
     try:
+
         result = run([
             "ffprobe",
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(path)
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
         ])
 
-        return float(result.stdout.strip())
+        return float(
+            result.stdout.strip()
+        )
 
     except Exception:
+
         return 0.0
 
 
 def clean_text(text):
+
     text = text or ""
 
-    # Remove HTML / SSML.
-    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(
+        r"<[^>]+>",
+        " ",
+        text
+    )
 
-    # Remove markdown.
-    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
-    text = re.sub(r"\*(.*?)\*", r"\1", text)
-    text = re.sub(r"`(.*?)`", r"\1", text)
+    text = re.sub(
+        r"\*\*(.*?)\*\*",
+        r"\1",
+        text
+    )
 
-    # Remove control characters.
-    text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", " ", text)
+    text = re.sub(
+        r"\*(.*?)\*",
+        r"\1",
+        text
+    )
 
-    # Normalize whitespace.
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(
+        r"`(.*?)`",
+        r"\1",
+        text
+    )
+
+    text = re.sub(
+        r"[\x00-\x08\x0B\x0C\x0E-\x1F]",
+        " ",
+        text
+    )
+
+    text = re.sub(
+        r"[ \t]+",
+        " ",
+        text
+    )
+
+    text = re.sub(
+        r"\n{3,}",
+        "\n\n",
+        text
+    )
 
     return text.strip()
 
 
 def normalize_arabic(text):
+
     text = clean_text(text)
 
     replacements = {
@@ -113,12 +155,17 @@ def normalize_arabic(text):
     }
 
     for a, b in replacements.items():
-        text = text.replace(a, b)
+
+        text = text.replace(
+            a,
+            b
+        )
 
     return text
 
 
 def keyword_tokens(text):
+
     text = normalize_arabic(text)
 
     words = re.findall(
@@ -127,24 +174,57 @@ def keyword_tokens(text):
     )
 
     stop = {
-        "this", "that", "with", "from", "into",
-        "near", "says", "about", "after",
-        "will", "have", "been", "more",
-        "latest", "news", "breakthrough",
-        "technology", "modern",
-        "future", "world",
-        "the", "and", "for",
-        "كيف", "لماذا", "ماذا", "هذا", "هذه",
-        "التي", "الذي", "هناك", "يمكن",
-        "خلال", "اليوم", "العالم",
-        "بشكل", "اكثر", "الناس",
-        "حول", "الى", "على", "من",
-        "في", "عن", "مع",
+        "this",
+        "that",
+        "with",
+        "from",
+        "into",
+        "near",
+        "says",
+        "about",
+        "after",
+        "will",
+        "have",
+        "been",
+        "more",
+        "latest",
+        "news",
+        "breakthrough",
+        "technology",
+        "modern",
+        "future",
+        "world",
+        "the",
+        "and",
+        "for",
+        "كيف",
+        "لماذا",
+        "ماذا",
+        "هذا",
+        "هذه",
+        "التي",
+        "الذي",
+        "هناك",
+        "يمكن",
+        "خلال",
+        "اليوم",
+        "العالم",
+        "بشكل",
+        "اكثر",
+        "الناس",
+        "حول",
+        "الى",
+        "على",
+        "من",
+        "في",
+        "عن",
+        "مع",
     }
 
     return [
-        w for w in words
-        if w.lower() not in stop
+        word
+        for word in words
+        if word.lower() not in stop
     ]
 
 
@@ -154,16 +234,28 @@ def keyword_tokens(text):
 
 def discover_topic():
 
-    print("\n=== DISCOVERING TOPIC ===")
+    print(
+        "\n=== DISCOVERING TOPIC ==="
+    )
 
     queries = [
+
         "latest technology news",
+
         "AI latest news",
+
         "artificial intelligence breakthrough",
+
+        "robotics latest news",
+
         "future technology",
+
         "science technology latest",
+
         "business technology trend",
+
         "energy technology latest",
+
         "space technology latest",
     ]
 
@@ -174,18 +266,21 @@ def discover_topic():
         try:
 
             url = (
-                "https://www.youtube.com/results?search_query="
+                "https://www.youtube.com/results?"
+                "search_query="
                 + urllib.parse.quote(query)
             )
 
-            req = urllib.request.Request(
+            request = urllib.request.Request(
                 url,
-                headers={"User-Agent": USER_AGENT}
+                headers={
+                    "User-Agent": USER_AGENT
+                }
             )
 
             with urllib.request.urlopen(
-                req,
-                timeout=20
+                request,
+                timeout=15
             ) as response:
 
                 html = response.read().decode(
@@ -206,10 +301,17 @@ def discover_topic():
                     continue
 
                 if title not in candidates:
-                    candidates.append(title)
+
+                    candidates.append(
+                        title
+                    )
 
         except Exception as e:
-            print("Topic search warning:", e)
+
+            print(
+                "Topic search warning:",
+                e
+            )
 
     if not candidates:
 
@@ -219,37 +321,49 @@ def discover_topic():
         )
 
     priority_words = [
+
         "AI",
         "artificial",
         "intelligence",
         "ذكاء",
         "الذكاء",
+
         "robot",
         "robotics",
         "روبوت",
+
         "future",
         "المستقبل",
+
         "technology",
         "تقنية",
+
         "energy",
         "طاقة",
+
         "space",
         "فضاء",
+
         "chip",
         "رقائق",
     ]
 
     bad_words = [
+
         "football",
         "soccer",
         "match",
         "goal",
+
         "music",
         "song",
+
         "movie",
         "trailer",
+
         "gaming",
         "gameplay",
+
         "celebrity",
     ]
 
@@ -258,30 +372,44 @@ def discover_topic():
     for title in candidates:
 
         score = 0
+
         lower = title.lower()
 
         for word in priority_words:
 
             if word.lower() in lower:
+
                 score += 3
 
         for word in bad_words:
 
             if word in lower:
+
                 score -= 10
 
-        score += min(len(title) / 50, 2)
+        score += min(
+            len(title) / 50,
+            2
+        )
 
-        scored.append((score, title))
+        scored.append(
+            (
+                score,
+                title
+            )
+        )
 
     scored.sort(
-        key=lambda x: x[0],
+        key=lambda item: item[0],
         reverse=True
     )
 
     topic = scored[0][1]
 
-    print("SELECTED TOPIC:", topic)
+    print(
+        "SELECTED TOPIC:",
+        topic
+    )
 
     return topic
 
@@ -302,6 +430,7 @@ def build_script(topic):
                 "يتحول من فكرة متخصصة إلى موضوع يؤثر "
                 "في القرارات والأعمال والحياة اليومية."
             ),
+
             "visual": [
                 "robotics",
                 "artificial intelligence",
@@ -317,6 +446,7 @@ def build_script(topic):
                 "السبب هو تسارع التطور، وتداخل التقنية "
                 "مع قطاعات كانت في السابق بعيدة عنها."
             ),
+
             "visual": [
                 "artificial intelligence",
                 "technology innovation",
@@ -332,6 +462,7 @@ def build_script(topic):
                 "عندها تبدأ الشركات والمؤسسات في إعادة التفكير "
                 "في طريقة العمل، والتكلفة، والسرعة، وحتى المخاطر."
             ),
+
             "visual": [
                 "industrial robotics",
                 "technology industry",
@@ -348,6 +479,7 @@ def build_script(topic):
                 "ومن جودة البيانات، ومن قدرة الإنسان على اتخاذ "
                 "القرار الصحيح في الوقت المناسب."
             ),
+
             "visual": [
                 "data center",
                 "computer data",
@@ -363,6 +495,7 @@ def build_script(topic):
                 "إضافة إلى الحاجة إلى مهارات جديدة تستطيع التعامل "
                 "مع هذا التحول بسرعة ووعي."
             ),
+
             "visual": [
                 "cybersecurity",
                 "computer security",
@@ -378,6 +511,7 @@ def build_script(topic):
                 "تنافسية، بينما قد تجد الجهات المتأخرة نفسها "
                 "تتعامل مع واقع جديد فرض نفسه بالفعل."
             ),
+
             "visual": [
                 "business technology",
                 "digital transformation",
@@ -393,6 +527,7 @@ def build_script(topic):
                 "السؤال سيكون: من يستطيع تحويلها إلى قيمة حقيقية، "
                 "وبطريقة آمنة ومستدامة وقابلة للتوسع؟"
             ),
+
             "visual": [
                 "future technology",
                 "advanced robotics",
@@ -409,6 +544,7 @@ def build_script(topic):
                 "وهذا بالضبط ما يجعل متابعة هذه التطورات "
                 "أمرًا يستحق الانتباه."
             ),
+
             "visual": [
                 "future technology",
                 "technology future",
@@ -425,15 +561,12 @@ def build_script(topic):
 # VOICE
 # ============================================================
 
-async def generate_voice_async(text, output):
+async def generate_voice_async(
+    text,
+    output
+):
 
     text = clean_text(text)
-
-    # IMPORTANT:
-    # Python API instead of edge-tts CLI.
-    # No SSML.
-    # No <break>.
-    # No --file.
 
     communicate = edge_tts.Communicate(
         text=text,
@@ -442,14 +575,22 @@ async def generate_voice_async(text, output):
         pitch=VOICE_PITCH,
     )
 
-    await communicate.save(str(output))
+    await communicate.save(
+        str(output)
+    )
 
 
-def generate_voice(text, output):
+def generate_voice(
+    text,
+    output
+):
 
-    print("\n=== GENERATING ARABIC VOICE ===")
+    print(
+        "\n=== GENERATING ARABIC VOICE ==="
+    )
 
     if output.exists():
+
         output.unlink()
 
     asyncio.run(
@@ -459,63 +600,86 @@ def generate_voice(text, output):
         )
     )
 
-    duration = ffprobe_duration(output)
+    duration = ffprobe_duration(
+        output
+    )
 
     if duration <= 0:
+
         raise RuntimeError(
-            "Voice generation produced an invalid audio file."
+            "Voice generation produced "
+            "an invalid audio file."
         )
 
     print(
-        f"VOICE DURATION: {duration:.2f}s"
+        f"VOICE DURATION: "
+        f"{duration:.2f}s"
     )
 
 
 # ============================================================
-# AUDIO MASTERING
+# PREMIUM AUDIO
 # ============================================================
 
 def master_audio():
 
-    print("\n=== MASTERING VOICE ===")
+    print(
+        "\n=== MASTERING PREMIUM VOICE ==="
+    )
 
     if AUDIO_FINAL.exists():
+
         AUDIO_FINAL.unlink()
 
     audio_filter = (
-        "highpass=f=70,"
-        "lowpass=f=15000,"
+
+        "highpass=f=65,"
+
+        "lowpass=f=15500,"
+
         "acompressor="
-        "threshold=-18dB:"
-        "ratio=2.0:"
-        "attack=18:"
-        "release=180,"
+        "threshold=-20dB:"
+        "ratio=2.4:"
+        "attack=12:"
+        "release=160:"
+
         "equalizer="
-        "f=180:"
+        "f=150:"
         "width_type=o:"
         "width=1:"
-        "g=0.7,"
+        "g=1.0:"
+
         "equalizer="
-        "f=2800:"
+        "f=3000:"
         "width_type=o:"
-        "width=1.1:"
-        "g=1.2,"
+        "width=1:"
+        "g=1.5:"
+
         "aecho="
-        "0.88:0.10:55:0.055,"
-        "volume=1.03"
+        "0.88:"
+        "0.09:"
+        "60:"
+        "0.045:"
+
+        "volume=1.22"
     )
 
     run([
         "ffmpeg",
         "-y",
+
         "-i",
         str(AUDIO_RAW),
+
         "-af",
         audio_filter,
+
         "-codec:a",
         "libmp3lame",
+
         "-b:a",
         "192k",
+
         str(AUDIO_FINAL),
     ])
 
@@ -524,20 +688,25 @@ def master_audio():
     )
 
     if duration <= 0:
+
         raise RuntimeError(
-            "Final audio mastering failed."
+            "Premium audio mastering failed."
         )
 
     print(
-        f"MASTERED AUDIO: {duration:.2f}s"
+        f"PREMIUM AUDIO: "
+        f"{duration:.2f}s"
     )
 
 
 # ============================================================
-# WIKIMEDIA
+# WIKIMEDIA SEARCH
 # ============================================================
 
-def search_wikimedia(query, limit=10):
+def search_wikimedia(
+    query,
+    limit=8
+):
 
     try:
 
@@ -547,24 +716,37 @@ def search_wikimedia(query, limit=10):
         )
 
         params = {
+
             "action": "query",
+
             "format": "json",
+
             "generator": "search",
+
             "gsrsearch": query,
+
             "gsrnamespace": 6,
+
             "gsrlimit": limit,
+
             "prop": "imageinfo",
+
             "iiprop": "url|mime|size",
+
             "iiurlwidth": 1600,
         }
 
         response = requests.get(
+
             api,
+
             params=params,
+
             headers={
                 "User-Agent": USER_AGENT
             },
-            timeout=25,
+
+            timeout=IMAGE_TIMEOUT,
         )
 
         response.raise_for_status()
@@ -594,6 +776,7 @@ def search_wikimedia(query, limit=10):
             if not mime.startswith(
                 "image/"
             ):
+
                 continue
 
             url = (
@@ -602,6 +785,7 @@ def search_wikimedia(query, limit=10):
             )
 
             if not url:
+
                 continue
 
             results.append({
@@ -625,19 +809,20 @@ def search_wikimedia(query, limit=10):
 
 
 # ============================================================
-# WIKIPEDIA FALLBACK
+# WIKIPEDIA SEARCH
 # ============================================================
 
-def search_wikipedia(query, limit=5):
+def search_wikipedia(
+    query,
+    limit=5
+):
 
     results = []
 
-    languages = [
+    for language in [
         "en",
         "ar",
-    ]
-
-    for language in languages:
+    ]:
 
         try:
 
@@ -647,23 +832,35 @@ def search_wikipedia(query, limit=5):
             )
 
             params = {
+
                 "action": "query",
+
                 "format": "json",
+
                 "generator": "search",
+
                 "gsrsearch": query,
+
                 "gsrlimit": limit,
+
                 "prop": "pageimages",
+
                 "piprop": "thumbnail",
+
                 "pithumbsize": 1600,
             }
 
             response = requests.get(
+
                 api,
+
                 params=params,
+
                 headers={
                     "User-Agent": USER_AGENT
                 },
-                timeout=20,
+
+                timeout=IMAGE_TIMEOUT,
             )
 
             response.raise_for_status()
@@ -678,14 +875,15 @@ def search_wikipedia(query, limit=5):
 
             for page in pages.values():
 
-                thumb = page.get(
+                thumbnail = page.get(
                     "thumbnail"
                 )
 
-                if not thumb:
+                if not thumbnail:
+
                     continue
 
-                url = thumb.get(
+                url = thumbnail.get(
                     "source"
                 )
 
@@ -713,7 +911,10 @@ def search_wikipedia(query, limit=5):
 # IMAGE SCORING
 # ============================================================
 
-def score_image(title, query):
+def score_image(
+    title,
+    query
+):
 
     title_words = set(
         keyword_tokens(title)
@@ -724,35 +925,56 @@ def score_image(title, query):
     )
 
     if not title_words or not query_words:
+
         return 0
 
     overlap = len(
-        title_words & query_words
+        title_words &
+        query_words
     )
 
-    score = overlap * 10
+    score = overlap * 12
 
     useful = [
+
         "robot",
         "robotics",
+
         "artificial",
         "intelligence",
+
         "technology",
+
         "computer",
+
         "machine",
+
         "industry",
+
         "factory",
+
         "data",
+
         "server",
+
         "cyber",
+
         "security",
+
         "science",
+
         "laboratory",
+
         "energy",
+
         "space",
+
         "satellite",
+
         "chip",
+
         "future",
+
         "automation",
     ]
 
@@ -763,22 +985,34 @@ def score_image(title, query):
     for word in useful:
 
         if word in combined:
+
             score += 2
 
     return score
 
 
-def select_image(query, candidates):
+def select_image(
+    query,
+    candidates
+):
 
     if not candidates:
+
         return None
 
     ranked = sorted(
+
         candidates,
-        key=lambda x: score_image(
-            x.get("title", ""),
+
+        key=lambda item:
+        score_image(
+            item.get(
+                "title",
+                ""
+            ),
             query
         ),
+
         reverse=True
     )
 
@@ -786,35 +1020,51 @@ def select_image(query, candidates):
 
 
 # ============================================================
-# DOWNLOAD IMAGE
+# FAST IMAGE DOWNLOAD
 # ============================================================
 
-def download_image(url, output):
+def download_image(
+    url,
+    output
+):
 
     try:
 
-        req = urllib.request.Request(
+        request = urllib.request.Request(
+
             url,
+
             headers={
                 "User-Agent": USER_AGENT
             }
         )
 
         with urllib.request.urlopen(
-            req,
-            timeout=30
+
+            request,
+
+            timeout=IMAGE_TIMEOUT
+
         ) as response:
 
-            data = response.read()
-
-        if len(data) < 5000:
-            raise RuntimeError(
-                "Image response too small."
+            data = response.read(
+                IMAGE_MIN_BYTES * 100
             )
 
-        output.write_bytes(data)
+        if len(data) < IMAGE_MIN_BYTES:
 
-        with Image.open(output) as img:
+            raise RuntimeError(
+                "Image too small."
+            )
+
+        output.write_bytes(
+            data
+        )
+
+        with Image.open(
+            output
+        ) as img:
+
             img.verify()
 
         return True
@@ -822,22 +1072,25 @@ def download_image(url, output):
     except Exception as e:
 
         print(
-            "Image download failed:",
+            "Image failed:",
             e
         )
 
         try:
+
             output.unlink(
                 missing_ok=True
             )
+
         except Exception:
+
             pass
 
         return False
 
 
 # ============================================================
-# CINEMATIC FALLBACK IMAGE
+# CINEMATIC FALLBACK
 # ============================================================
 
 def create_fallback_image(
@@ -847,8 +1100,7 @@ def create_fallback_image(
 ):
 
     print(
-        f"Creating cinematic fallback "
-        f"for scene {scene_index}"
+        "Creating cinematic fallback..."
     )
 
     output = (
@@ -856,77 +1108,152 @@ def create_fallback_image(
         f"scene_{scene_index}_fallback.jpg"
     )
 
-    # Stable seed based on topic + scene.
     seed = hashlib.md5(
+
         f"{topic}-{scene_index}".encode(
             "utf-8"
         )
+
     ).hexdigest()
 
     values = [
-        int(seed[i:i+2], 16)
-        for i in range(0, 12, 2)
+
+        int(
+            seed[i:i+2],
+            16
+        )
+
+        for i in range(
+            0,
+            12,
+            2
+        )
     ]
 
     base = Image.new(
+
         "RGB",
-        (WIDTH, HEIGHT),
+
         (
-            12 + values[0] % 18,
-            16 + values[1] % 20,
-            24 + values[2] % 28,
+            WIDTH,
+            HEIGHT
+        ),
+
+        (
+            8 + values[0] % 18,
+            12 + values[1] % 20,
+            20 + values[2] % 25,
         )
     )
 
-    draw = ImageDraw.Draw(base)
+    draw = ImageDraw.Draw(
+        base
+    )
 
-    # Cinematic geometric technology background.
-    for i in range(14):
+    # Cinematic circles / technology pattern.
+
+    for i in range(18):
 
         x = (
-            values[(i + 1) % len(values)]
+
+            values[
+                (i + 1) %
+                len(values)
+            ]
+
             / 255
+
             * WIDTH
         )
 
         y = (
-            values[(i + 2) % len(values)]
+
+            values[
+                (i + 2) %
+                len(values)
+            ]
+
             / 255
+
             * HEIGHT
         )
 
-        radius = 100 + (
-            values[(i + 3) % len(values)]
+        radius = (
+
+            80 +
+
+            values[
+                (i + 3) %
+                len(values)
+            ]
+
             * 2
         )
 
         draw.ellipse(
+
             (
                 x - radius,
                 y - radius,
                 x + radius,
                 y + radius,
             ),
+
             outline=(
                 45,
                 65,
-                90
+                95
             ),
-            width=3,
+
+            width=3
         )
 
-    # Topic keywords as small visual labels.
+    # Technology lines.
+
+    for i in range(12):
+
+        y = int(
+            HEIGHT *
+            (
+                i + 1
+            ) / 13
+        )
+
+        draw.line(
+
+            (
+                0,
+                y,
+                WIDTH,
+                y
+            ),
+
+            fill=(
+                25,
+                38,
+                58
+            ),
+
+            width=2
+        )
+
     words = keyword_tokens(
         topic
     )[:5]
 
-    y = 80
+    y = 100
 
     for word in words:
 
         draw.text(
-            (80, y),
+
+            (
+                90,
+                y
+            ),
+
             word.upper(),
+
             fill=(
                 170,
                 185,
@@ -934,50 +1261,24 @@ def create_fallback_image(
             )
         )
 
-        y += 55
-
-    # Dark cinematic vignette.
-    vignette = Image.new(
-        "L",
-        (WIDTH, HEIGHT),
-        0
-    )
-
-    vdraw = ImageDraw.Draw(
-        vignette
-    )
-
-    vdraw.ellipse(
-        (
-            -WIDTH * 0.2,
-            -HEIGHT * 0.2,
-            WIDTH * 1.2,
-            HEIGHT * 1.2,
-        ),
-        fill=255
-    )
-
-    vignette = vignette.filter(
-        ImageFilter.GaussianBlur(180)
-    )
-
-    base = Image.composite(
-        base,
-        Image.new(
-            "RGB",
-            (WIDTH, HEIGHT),
-            (5, 7, 12)
-        ),
-        vignette
-    )
+        y += 58
 
     base = ImageEnhance.Contrast(
         base
-    ).enhance(1.15)
+    ).enhance(1.18)
+
+    base = base.filter(
+        ImageFilter.GaussianBlur(
+            radius=0.15
+        )
+    )
 
     base.save(
+
         output,
+
         "JPEG",
+
         quality=92
     )
 
@@ -993,17 +1294,29 @@ def prepare_image(
     target
 ):
 
-    with Image.open(source) as img:
+    with Image.open(
+        source
+    ) as img:
 
         img = img.convert(
             "RGB"
         )
 
         img = ImageOps.fit(
+
             img,
-            (WIDTH, HEIGHT),
+
+            (
+                WIDTH,
+                HEIGHT
+            ),
+
             method=Image.Resampling.LANCZOS,
-            centering=(0.5, 0.5),
+
+            centering=(
+                0.5,
+                0.5
+            )
         )
 
         img = ImageEnhance.Contrast(
@@ -1015,15 +1328,19 @@ def prepare_image(
         ).enhance(1.03)
 
         img.save(
+
             target,
+
             "JPEG",
+
             quality=94,
+
             optimize=True
         )
 
 
 # ============================================================
-# SCENE IMAGE
+# SCENE IMAGE CREATION
 # ============================================================
 
 def create_scene_image(
@@ -1040,37 +1357,40 @@ def create_scene_image(
     candidates = []
 
     # --------------------------------------------------------
-    # 1. Search using short visual queries.
+    # 1. Wikimedia
     # --------------------------------------------------------
 
     for query in scene["visual"]:
 
         print(
-            "WIKIMEDIA SEARCH:",
+            "SEARCH:",
             query
         )
 
         results = search_wikimedia(
             query,
-            limit=10
+            limit=6
         )
 
         for item in results:
 
-            existing_urls = {
+            urls = {
                 x["url"]
                 for x in candidates
             }
 
-            if item["url"] not in existing_urls:
+            if item["url"] not in urls:
 
-                candidates.append(item)
+                candidates.append(
+                    item
+                )
 
-        if len(candidates) >= 12:
+        if len(candidates) >= 10:
+
             break
 
     # --------------------------------------------------------
-    # 2. If Wikimedia is weak, search Wikipedia.
+    # 2. Wikipedia
     # --------------------------------------------------------
 
     if not candidates:
@@ -1078,13 +1398,13 @@ def create_scene_image(
         for query in scene["visual"]:
 
             print(
-                "WIKIPEDIA SEARCH:",
+                "WIKIPEDIA:",
                 query
             )
 
             results = search_wikipedia(
                 query,
-                limit=5
+                limit=4
             )
 
             candidates.extend(
@@ -1092,28 +1412,27 @@ def create_scene_image(
             )
 
             if candidates:
+
                 break
 
     # --------------------------------------------------------
-    # 3. Try topic keywords.
+    # 3. Topic keyword fallback
     # --------------------------------------------------------
 
     if not candidates:
 
-        topic_words = keyword_tokens(
+        for word in keyword_tokens(
             topic
-        )
-
-        for word in topic_words[:5]:
+        )[:5]:
 
             print(
-                "TOPIC FALLBACK SEARCH:",
+                "TOPIC SEARCH:",
                 word
             )
 
             results = search_wikimedia(
                 word,
-                limit=10
+                limit=6
             )
 
             candidates.extend(
@@ -1121,6 +1440,7 @@ def create_scene_image(
             )
 
             if candidates:
+
                 break
 
     raw = (
@@ -1134,54 +1454,83 @@ def create_scene_image(
     )
 
     # --------------------------------------------------------
-    # 4. Select and download.
+    # 4. Try several candidate images
     # --------------------------------------------------------
 
-    selected = select_image(
-        " ".join(
-            scene["visual"]
-        ),
-        candidates
-    )
+    if candidates:
 
-    if selected:
+        ranked = sorted(
 
-        print(
-            "SELECTED IMAGE:",
-            selected.get(
-                "title",
-                ""
-            )
+            candidates,
+
+            key=lambda item:
+            score_image(
+
+                item.get(
+                    "title",
+                    ""
+                ),
+
+                " ".join(
+                    scene["visual"]
+                )
+            ),
+
+            reverse=True
         )
 
-        if download_image(
-            selected["url"],
-            raw
-        ):
+        # Try up to 5 images.
+        for selected in ranked[:5]:
 
-            prepare_image(
-                raw,
-                final
+            print(
+                "TRY IMAGE:",
+                selected.get(
+                    "title",
+                    ""
+                )
             )
 
-            return final
+            if download_image(
+
+                selected["url"],
+
+                raw
+            ):
+
+                prepare_image(
+
+                    raw,
+
+                    final
+                )
+
+                print(
+                    "VISUAL READY."
+                )
+
+                return final
 
     # --------------------------------------------------------
-    # 5. Never stop the whole video because of an image.
+    # 5. Guaranteed fallback
     # --------------------------------------------------------
 
     print(
-        "No external image available."
+        "No usable external image."
     )
 
     fallback = create_fallback_image(
+
         scene_index,
+
         topic,
+
         scene
     )
 
     prepare_image(
+
         fallback,
+
         final
     )
 
@@ -1213,10 +1562,13 @@ def generate_scene_audios(
         )
 
         if path.exists():
+
             path.unlink()
 
         generate_voice(
+
             scene["text"],
+
             path
         )
 
@@ -1265,18 +1617,26 @@ def concatenate_audio(
             )
 
     run([
+
         "ffmpeg",
+
         "-y",
+
         "-f",
         "concat",
+
         "-safe",
         "0",
+
         "-i",
         str(list_file),
+
         "-c:a",
         "libmp3lame",
+
         "-b:a",
         "192k",
+
         str(output),
     ])
 
@@ -1291,7 +1651,8 @@ def concatenate_audio(
         )
 
     print(
-        f"TOTAL AUDIO: {duration:.2f}s"
+        f"TOTAL AUDIO: "
+        f"{duration:.2f}s"
     )
 
 
@@ -1329,51 +1690,81 @@ def render_scene(
     if index % 2 == 0:
 
         zoom = (
+
             "zoompan="
+
             "z='min(zoom+0.00045,1.12)':"
+
             "x='iw/2-(iw/zoom/2)':"
+
             "y='ih/2-(ih/zoom/2)':"
-            f"d=1:s={WIDTH}x{HEIGHT}:fps={FPS}"
+
+            f"d=1:s="
+            f"{WIDTH}x{HEIGHT}:"
+            f"fps={FPS}"
         )
 
     else:
 
         zoom = (
+
             "zoompan="
+
             "z='min(zoom+0.00038,1.10)':"
+
             "x='iw/2-(iw/zoom/2)':"
+
             "y='ih/2-(ih/zoom/2)':"
-            f"d=1:s={WIDTH}x{HEIGHT}:fps={FPS}"
+
+            f"d=1:s="
+            f"{WIDTH}x{HEIGHT}:"
+            f"fps={FPS}"
         )
 
     run([
+
         "ffmpeg",
+
         "-y",
+
         "-loop",
         "1",
+
         "-i",
         str(image_path),
+
         "-i",
         str(audio_path),
+
         "-vf",
         zoom,
+
         "-t",
         f"{duration:.3f}",
+
         "-r",
         str(FPS),
+
         "-c:v",
         "libx264",
+
         "-preset",
         "veryfast",
+
         "-crf",
         "20",
+
         "-pix_fmt",
         "yuv420p",
+
         "-c:a",
         "aac",
+
         "-b:a",
         "192k",
+
         "-shortest",
+
         str(output),
     ])
 
@@ -1432,16 +1823,23 @@ def concatenate_video(
     )
 
     run([
+
         "ffmpeg",
+
         "-y",
+
         "-f",
         "concat",
+
         "-safe",
         "0",
+
         "-i",
         str(list_file),
+
         "-c",
         "copy",
+
         str(temp_video),
     ])
 
@@ -1461,28 +1859,41 @@ def mux_final_video(
     )
 
     if VIDEO_PATH.exists():
+
         VIDEO_PATH.unlink()
 
     run([
+
         "ffmpeg",
+
         "-y",
+
         "-i",
         str(video_file),
+
         "-i",
         str(AUDIO_FINAL),
+
         "-map",
         "0:v:0",
+
         "-map",
         "1:a:0",
+
         "-c:v",
         "copy",
+
         "-c:a",
         "aac",
+
         "-b:a",
         "192k",
+
         "-movflags",
         "+faststart",
+
         "-shortest",
+
         str(VIDEO_PATH),
     ])
 
@@ -1497,8 +1908,11 @@ def mux_final_video(
         )
 
     size_mb = (
+
         VIDEO_PATH.stat().st_size
+
         / 1024
+
         / 1024
     )
 
@@ -1526,21 +1940,23 @@ def mux_final_video(
 
 def main():
 
-    print("=" * 60)
     print(
-        "ACURIVO VIDEO FACTORY V8"
+        "=" * 60
     )
-    print("=" * 60)
 
-    # --------------------------------------------------------
-    # 1. Discover topic
-    # --------------------------------------------------------
+    print(
+        "ACURIVO VIDEO FACTORY V9"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    # 1. Topic
 
     topic = discover_topic()
 
-    # --------------------------------------------------------
-    # 2. Build script
-    # --------------------------------------------------------
+    # 2. Script
 
     scenes = build_script(
         topic
@@ -1579,13 +1995,13 @@ def main():
         WORK /
         "script.txt"
     ).write_text(
+
         script_text,
+
         encoding="utf-8"
     )
 
-    # --------------------------------------------------------
-    # 3. Generate scene voices
-    # --------------------------------------------------------
+    # 3. Voice
 
     scene_audios = (
         generate_scene_audios(
@@ -1593,20 +2009,18 @@ def main():
         )
     )
 
-    # --------------------------------------------------------
-    # 4. Build master audio
-    # --------------------------------------------------------
+    # 4. Master audio
 
     concatenate_audio(
+
         scene_audios,
+
         AUDIO_RAW
     )
 
     master_audio()
 
-    # --------------------------------------------------------
-    # 5. Create scene visuals
-    # --------------------------------------------------------
+    # 5. Images
 
     scene_images = []
 
@@ -1616,8 +2030,11 @@ def main():
     ):
 
         image = create_scene_image(
+
             i,
+
             scene,
+
             topic
         )
 
@@ -1625,23 +2042,29 @@ def main():
             image
         )
 
-    # --------------------------------------------------------
-    # 6. Render scenes
-    # --------------------------------------------------------
+    # 6. Render
 
     scene_videos = []
 
-    for i, (image, audio) in enumerate(
+    for i, (
+        image,
+        audio
+    ) in enumerate(
+
         zip(
             scene_images,
             scene_audios
         ),
+
         start=1
     ):
 
         video = render_scene(
+
             i,
+
             image,
+
             audio
         )
 
@@ -1649,9 +2072,7 @@ def main():
             video
         )
 
-    # --------------------------------------------------------
     # 7. Concatenate
-    # --------------------------------------------------------
 
     concat_video = (
         concatenate_video(
@@ -1659,17 +2080,13 @@ def main():
         )
     )
 
-    # --------------------------------------------------------
     # 8. Final mux
-    # --------------------------------------------------------
 
     mux_final_video(
         concat_video
     )
 
-    # --------------------------------------------------------
-    # 9. Final verification
-    # --------------------------------------------------------
+    # 9. Verification
 
     final_duration = (
         ffprobe_duration(
@@ -1678,16 +2095,26 @@ def main():
     )
 
     final_size = (
+
         VIDEO_PATH.stat().st_size
+
         / 1024
+
         / 1024
     )
 
-    print("\n" + "=" * 60)
+    print(
+        "\n" +
+        "=" * 60
+    )
+
     print(
         "ACURIVO VIDEO READY"
     )
-    print("=" * 60)
+
+    print(
+        "=" * 60
+    )
 
     print(
         f"TOPIC: {topic}"
