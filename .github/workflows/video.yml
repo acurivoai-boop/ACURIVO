@@ -3,6 +3,8 @@ on:
   schedule:
     - cron: '0 10 * * *'
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   daily-video:
     runs-on: ubuntu-latest
@@ -32,7 +34,7 @@ jobs:
             -of default=noprint_wrappers=1 \
             output/ACURIVO_VIDEO.mp4
       # ==========================================================
-      # PREPARE VIDEO FOR TRANSFER
+      # PREPARE VIDEO
       # ==========================================================
       - name: Prepare video
         run: |
@@ -41,7 +43,7 @@ jobs:
              transfer/ACURIVO_VIDEO.mp4
           ls -lh transfer/ACURIVO_VIDEO.mp4
       # ==========================================================
-      # UPLOAD VIDEO AS GITHUB ARTIFACT
+      # SAVE ARTIFACT
       # ==========================================================
       - name: Save video artifact
         uses: actions/upload-artifact@v4
@@ -50,7 +52,7 @@ jobs:
           path: transfer/ACURIVO_VIDEO.mp4
           retention-days: 1
       # ==========================================================
-      # CREATE PUBLIC RELEASE AS TRANSFER CHANNEL
+      # CREATE GITHUB RELEASE
       # ==========================================================
       - name: Create release
         env:
@@ -78,7 +80,7 @@ jobs:
           echo "ASSET_URL=$URL"
           echo "asset_url=$URL" >> "$GITHUB_OUTPUT"
       # ==========================================================
-      # SEND ONLY THE URL TO ACURIVO HUB
+      # SEND VIDEO URL TO ACURIVO HUB
       # ==========================================================
       - name: Send video URL to ACURIVO HUB
         env:
@@ -98,7 +100,7 @@ jobs:
           }
           body = json.dumps(payload).encode("utf-8")
           print("SENDING VIDEO URL TO ACURIVO HUB...")
-          print("URL:")
+          print("VIDEO URL:")
           print(video_url)
           request = urllib.request.Request(
               endpoint,
@@ -108,6 +110,7 @@ jobs:
               },
               method="POST"
           )
+          print("WAITING FOR ACURIVO HUB...")
           with urllib.request.urlopen(
               request,
               timeout=300
@@ -119,7 +122,7 @@ jobs:
                   raise RuntimeError(
                       "ACURIVO HUB did not confirm successful upload."
                   )
-          print("ACURIVO VIDEO TRANSFER CONFIRMED.")
+          print("YOUTUBE UPLOAD CONFIRMED.")
           PY
       # ==========================================================
       # CLEAN OLD RELEASES
