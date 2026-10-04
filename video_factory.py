@@ -14,7 +14,7 @@ OUT.mkdir(exist_ok=True)
 IMG.mkdir(exist_ok=True)
 
 # ============================================================
-# ACURIVO TOPIC ENGINE
+# ACURIVO DAILY AI FACTORY
 # ============================================================
 
 SEARCHES = [
@@ -29,7 +29,9 @@ SEARCHES = [
     "energy technology",
     "robotics",
     "artificial intelligence",
-    "future science"
+    "future science",
+    "technology explained",
+    "science explained"
 ]
 
 BLOCKED = [
@@ -44,7 +46,11 @@ BLOCKED = [
     "daily vlog",
     "house tour",
     "room tour",
-    "travel vlog"
+    "travel vlog",
+    "reaction",
+    "prank",
+    "challenge",
+    "celebrity gossip"
 ]
 
 
@@ -54,7 +60,7 @@ def run(cmd):
 
 
 # ============================================================
-# SEARCH YOUTUBE
+# DISCOVER TOPICS
 # ============================================================
 
 def discover_videos():
@@ -100,7 +106,10 @@ def discover_videos():
 
                 low = title.lower()
 
-                if any(word in low for word in BLOCKED):
+                if any(
+                    word in low
+                    for word in BLOCKED
+                ):
                     continue
 
                 results.append({
@@ -111,9 +120,13 @@ def discover_videos():
 
         except Exception as e:
 
-            print("SEARCH ERROR:", e)
+            print(
+                "SEARCH ERROR:",
+                e
+            )
 
     if not results:
+
         raise RuntimeError(
             "لم يتم العثور على مواضيع مناسبة."
         )
@@ -132,7 +145,11 @@ def discover_videos():
 
     results = list(unique.values())
 
-    print("FOUND:", len(results), "VIDEOS")
+    print(
+        "FOUND:",
+        len(results),
+        "VIDEOS"
+    )
 
     return results
 
@@ -171,7 +188,89 @@ def clean_title(title):
 
 
 # ============================================================
-# CHOOSE TOPIC
+# TRANSLATE TOPIC TO ARABIC
+# ============================================================
+
+def translate_to_arabic(text):
+
+    print("")
+    print(
+        "TRANSLATING TOPIC TO ARABIC..."
+    )
+
+    print(
+        "ORIGINAL:",
+        text
+    )
+
+    try:
+
+        params = urllib.parse.urlencode({
+            "client": "gtx",
+            "sl": "auto",
+            "tl": "ar",
+            "dt": "t",
+            "q": text
+        })
+
+        url = (
+            "https://translate.googleapis.com/"
+            "translate_a/single?"
+            + params
+        )
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+
+        with urllib.request.urlopen(
+            request,
+            timeout=30
+        ) as response:
+
+            data = json.loads(
+                response.read().decode(
+                    "utf-8"
+                )
+            )
+
+        translated = ""
+
+        for part in data[0]:
+
+            if part and part[0]:
+                translated += part[0]
+
+        translated = re.sub(
+            r"\s+",
+            " ",
+            translated
+        ).strip()
+
+        if translated:
+
+            print(
+                "ARABIC TOPIC:",
+                translated
+            )
+
+            return translated
+
+    except Exception as e:
+
+        print(
+            "TRANSLATION ERROR:",
+            e
+        )
+
+    return text
+
+
+# ============================================================
+# SELECT TOPIC
 # ============================================================
 
 def choose_topic(results):
@@ -180,89 +279,189 @@ def choose_topic(results):
 
     for item in results:
 
-        topic = clean_title(
+        original = clean_title(
             item["title"]
         )
 
-        if len(topic) < 15:
+        if len(original) < 15:
+            continue
+
+        arabic = translate_to_arabic(
+            original
+        )
+
+        if len(arabic) < 8:
             continue
 
         print("=" * 60)
         print("SELECTED TOPIC")
-        print(topic)
-        print("SOURCE:", item["query"])
+        print(
+            "ORIGINAL:",
+            original
+        )
+        print(
+            "ARABIC:",
+            arabic
+        )
+        print(
+            "SOURCE:",
+            item["query"]
+        )
         print("=" * 60)
 
-        return topic, item
+        return (
+            arabic,
+            original,
+            item
+        )
 
     item = results[0]
 
-    return clean_title(
+    original = clean_title(
         item["title"]
-    ), item
+    )
+
+    arabic = translate_to_arabic(
+        original
+    )
+
+    return (
+        arabic,
+        original,
+        item
+    )
 
 
 # ============================================================
-# SCRIPT
+# ORIGINAL ARABIC SCRIPT
 # ============================================================
 
 def build_script(topic):
 
     script = f"""
-هناك اتجاه جديد يستحق الانتباه.
+هناك تطور جديد يستحق الانتباه.
 
 موضوعنا اليوم هو:
 
 {topic}
 
-لكن السؤال الأهم ليس فقط ماذا يحدث،
-بل لماذا يحدث الآن؟
+قد يبدو هذا الموضوع في البداية مجرد خبر أو فكرة جديدة،
+لكن عند النظر إليه بصورة أعمق،
+سنجد أن وراءه مجموعة من التغيرات المهمة.
 
-خلال السنوات الأخيرة أصبح العالم يتغير بسرعة
-غير مسبوقة.
+خلال السنوات الأخيرة،
+تسارعت وتيرة التغيير في العالم بشكل كبير.
 
-التقنية والعلوم والاقتصاد وسلوك الإنسان
-أصبحت مترابطة أكثر من أي وقت مضى.
+التقنية تتطور،
+والعلوم تتقدم،
+والاقتصاد يتغير،
+وطريقة تعامل الإنسان مع المعلومات أصبحت مختلفة.
 
-وفي موضوع {topic}،
-هناك عدة نقاط تستحق التوقف عندها.
+ولهذا أصبحت بعض الموضوعات التي كانت تبدو بعيدة
+عن حياتنا اليومية مرتبطة بنا أكثر مما نتوقع.
 
-أولًا، سرعة التطور أصبحت عاملًا أساسيًا.
+أما في موضوع {topic}،
+فالسؤال المهم ليس فقط:
 
-ثانيًا، حجم التأثير المحتمل أصبح أكبر.
+ماذا يحدث؟
 
-وثالثًا، ما زالت هناك أسئلة كثيرة
-لم تحصل على إجابات نهائية.
+بل السؤال الأهم:
 
-وهنا تبدأ القصة الحقيقية.
+لماذا يحدث هذا الآن؟
 
-إذا استمر هذا الاتجاه،
-فقد تتغير طريقة عملنا وتعلمنا
-واتخاذنا للقرارات.
+هناك عدة عوامل تساعد على فهم الصورة.
 
-لكن من المهم أن نفرق بين التوقع
-والحقيقة.
+أول هذه العوامل هو التطور السريع.
 
-النجاح الحقيقي يحتاج إلى دليل،
-وتجربة،
-وقيمة يمكن قياسها.
+فعندما تتطور المعرفة والتقنية بسرعة،
+يمكن لفكرة صغيرة أن تتحول خلال فترة قصيرة
+إلى اتجاه واسع له تأثير كبير.
 
-لذلك لا يتعلق الأمر بالخوف من المستقبل،
-بل بفهم الاتجاهات والاستعداد لها.
+العامل الثاني هو حجم التأثير.
 
-والسؤال الذي يستحق التفكير هو:
+فبعض التطورات لا تؤثر في مجال واحد فقط،
+بل يمكن أن تمتد آثارها إلى الشركات،
+والوظائف،
+والتعليم،
+والاقتصاد،
+وحياة الناس اليومية.
 
-إلى أين يمكن أن يقودنا هذا التطور؟
+أما العامل الثالث،
+فهو أن النتائج النهائية لا تكون واضحة منذ البداية.
+
+وهنا يجب أن نكون حذرين.
+
+ليس كل اتجاه جديد يعني بالضرورة
+أن العالم سيتغير بالطريقة التي يتوقعها الناس.
+
+هناك فرق بين التوقع،
+وبين ما تثبته التجارب والأدلة.
+
+ولهذا فإن أفضل طريقة لفهم المستقبل
+هي مراقبة التطورات،
+ومقارنة النتائج،
+والبحث عن الأدلة الحقيقية.
+
+وفي حالة {topic}،
+قد يكون التأثير الحقيقي أكبر من مجرد الخبر الحالي.
+
+فإذا استمر هذا الاتجاه،
+فقد نرى تغيرات جديدة خلال السنوات القادمة.
+
+وقد تظهر فرص جديدة،
+وفي الوقت نفسه قد تظهر تحديات لم تكن واضحة من قبل.
+
+والأهم أن نفهم أن التغيير لا يحدث في لحظة واحدة.
+
+غالبًا يبدأ بفكرة،
+ثم تجربة،
+ثم تطبيق محدود،
+وبعد ذلك يبدأ التأثير في الانتشار.
+
+وهذا ما يجعل متابعة التطورات العلمية والتقنية
+أمرًا مهمًا لكل شخص يريد أن يفهم المستقبل.
+
+فما نراه اليوم قد يكون مجرد بداية.
+
+وقد تتغير طريقة عملنا،
+وطريقة تعلمنا،
+وطريقة اتخاذنا للقرارات،
+بناءً على تطورات تبدو الآن في بدايتها.
+
+لكن لا يمكننا معرفة المستقبل بشكل كامل.
+
+ولهذا من الأفضل أن نفرق دائمًا بين الحقيقة،
+والتوقع،
+والاحتمال.
+
+المعلومة الموثوقة تساعدنا على فهم الواقع،
+أما التوقع فيعطينا سيناريوهات محتملة،
+والقرار الذكي يحتاج إلى الجمع بين الاثنين.
+
+وفي النهاية،
+السؤال ليس:
+
+هل سيتغير العالم؟
+
+لأن العالم يتغير بالفعل.
+
+السؤال الحقيقي هو:
+
+إلى أي اتجاه يسير هذا التغيير؟
+
+ومن سيكون مستعدًا عندما تظهر نتائجه؟
+
+ربما تكون الإجابة أهم مما نتوقع.
 
 تابع ACURIVO للمزيد من القصص
-والأفكار التي تستحق أن تعرفها.
+والأفكار والتطورات التي تستحق أن تعرفها.
 """
 
     return script.strip()
 
 
 # ============================================================
-# VOICE
+# ARABIC VOICE
 # ============================================================
 
 def make_voice(script):
@@ -275,7 +474,7 @@ def make_voice(script):
         "edge_tts",
         "--voice",
         "ar-SA-HamedNeural",
-        "--rate=+3%",
+        "--rate=+0%",
         "--text",
         script,
         "--write-media",
@@ -286,6 +485,39 @@ def make_voice(script):
 
 
 # ============================================================
+# AUDIO DURATION
+# ============================================================
+
+def get_audio_duration(audio):
+
+    output = subprocess.check_output(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio)
+        ],
+        text=True
+    )
+
+    duration = float(
+        output.strip()
+    )
+
+    print(
+        "AUDIO DURATION:",
+        round(duration, 2),
+        "SECONDS"
+    )
+
+    return duration
+
+
+# ============================================================
 # FREE IMAGE SOURCE
 # ============================================================
 
@@ -293,10 +525,12 @@ def make_image(prompt, index):
 
     filename = IMG / f"scene_{index}.jpg"
 
-    # Picsum لا يحتاج API Key أو تسجيل دخول
     url = (
         "https://picsum.photos/1920/1080?random="
-        + str(int(time.time() * 1000) + index)
+        + str(
+            int(time.time() * 1000)
+            + index
+        )
     )
 
     try:
@@ -351,17 +585,11 @@ def make_image(prompt, index):
 def make_scenes(topic):
 
     prompts = [
-
-        f"{topic} technology futuristic",
-
-        f"{topic} science documentary",
-
+        f"{topic} technology",
+        f"{topic} science",
         f"{topic} modern world",
-
         f"{topic} innovation",
-
-        f"{topic} future technology"
-
+        f"{topic} future"
     ]
 
     images = []
@@ -400,12 +628,29 @@ def make_scenes(topic):
 
 
 # ============================================================
-# VIDEO
+# BUILD VIDEO
 # ============================================================
 
 def make_video(images, audio):
 
     video = OUT / "ACURIVO_VIDEO.mp4"
+
+    audio_duration = get_audio_duration(
+        audio
+    )
+
+    image_duration = (
+        audio_duration / len(images)
+    )
+
+    print(
+        "IMAGE DURATION:",
+        round(
+            image_duration,
+            2
+        ),
+        "SECONDS"
+    )
 
     concat = OUT / "images.txt"
 
@@ -422,7 +667,7 @@ def make_video(images, audio):
             )
 
             f.write(
-                "duration 8\n"
+                f"duration {image_duration:.3f}\n"
             )
 
         f.write(
@@ -432,12 +677,16 @@ def make_video(images, audio):
     run([
         "ffmpeg",
         "-y",
+
         "-f",
         "concat",
+
         "-safe",
         "0",
+
         "-i",
         str(concat),
+
         "-i",
         str(audio),
 
@@ -450,6 +699,9 @@ def make_video(images, audio):
             "s=1920x1080:"
             "fps=30"
         ),
+
+        "-t",
+        str(audio_duration + 0.5),
 
         "-c:v",
         "libx264",
@@ -478,13 +730,18 @@ def make_video(images, audio):
 # REPORT
 # ============================================================
 
-def save_report(topic, source):
+def save_report(
+    topic,
+    original,
+    source
+):
 
     report = OUT / "topic_report.txt"
 
     report.write_text(
         "ACURIVO DAILY TOPIC\n\n"
-        f"TOPIC: {topic}\n"
+        f"ARABIC TOPIC: {topic}\n"
+        f"ORIGINAL TOPIC: {original}\n"
         f"SOURCE SEARCH: {source['query']}\n"
         f"SOURCE TITLE: {source['title']}\n"
         f"VIDEO ID: {source.get('id', '')}\n",
@@ -493,7 +750,7 @@ def save_report(topic, source):
 
 
 # ============================================================
-# CLEAN OLD IMAGES
+# CLEAN OLD FILES
 # ============================================================
 
 def clean_old_files():
@@ -526,12 +783,13 @@ def main():
 
     results = discover_videos()
 
-    topic, source = choose_topic(
+    topic, original, source = choose_topic(
         results
     )
 
     save_report(
         topic,
+        original,
         source
     )
 
@@ -540,7 +798,9 @@ def main():
     )
 
     print("")
-    print("ORIGINAL SCRIPT CREATED")
+    print(
+        "ORIGINAL ARABIC SCRIPT CREATED"
+    )
     print("")
 
     audio = make_voice(
@@ -560,8 +820,14 @@ def main():
     print("=" * 60)
     print("       ACURIVO VIDEO CREATED")
     print("=" * 60)
-    print("TOPIC:", topic)
-    print("VIDEO:", video)
+    print(
+        "TOPIC:",
+        topic
+    )
+    print(
+        "VIDEO:",
+        video
+    )
     print("=" * 60)
 
 
