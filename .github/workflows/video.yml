@@ -33,7 +33,7 @@ jobs:
 
       - name: Send video to ACURIVO HUB
         env:
-          ACURIVO_WEBAPP: ${{ vars.ACURIVO_WEBAPP }}
+          ACURIVO_WEBAPP: "https://script.google.com/macros/s/AKfycbzM2XkoawYfFdz97y5mc3UYjj3Sn8Bha8sn8SLpV0TcSEU1_PKS5M3bokLJMCyfmU5j/exec"
         run: |
           python3 - <<'PY'
           import base64
@@ -60,9 +60,12 @@ jobs:
           )
 
           with urllib.request.urlopen(request, timeout=300) as response:
-              print(response.read().decode("utf-8"))
+              result = response.read().decode("utf-8")
+              print(result)
 
-      - name: Save video artifact
+          PY
+
+      - name: Save completed video
         uses: actions/upload-artifact@v4
         with:
           name: ACURIVO-DAILY-VIDEO
