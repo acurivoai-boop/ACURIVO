@@ -32,6 +32,13 @@ jobs:
         run: |
           python3 video_factory.py
 
+      - name: Check video
+        run: |
+          ls -lh output/ACURIVO_VIDEO.mp4
+          ffprobe -v error -show_entries format=duration,size \
+          -of default=noprint_wrappers=1 \
+          output/ACURIVO_VIDEO.mp4
+
       - name: Send video to ACURIVO HUB
         env:
           ACURIVO_WEBAPP: "https://script.google.com/macros/s/AKfycbzM2XkoawYfFdz97y5mc3UYjj3Sn8Bha8sn8SLpV0TcSEU1_PKS5M3bokLJMCyfmU5j/exec"
@@ -45,38 +52,49 @@ jobs:
           video_path = "output/ACURIVO_VIDEO.mp4"
           endpoint = os.environ["ACURIVO_WEBAPP"]
 
-          print("Preparing video for upload...")
-
           with open(video_path, "rb") as f:
               video_data = f.read()
 
           size_mb = len(video_data) / 1024 / 1024
-          print(f"Video size: {size_mb:.2f} MB")
+          print(f"VIDEO SIZE: {size_mb:.2f} MB")
 
-          encoded = base64.b64encode(video_data).decode("ascii")
+          if size_mb > 45:
+              raise RuntimeError(
+                  f"Video is too large: {size_mb:.2f} MB"
+              )
 
           payload = {
               "filename": "ACURIVO_VIDEO.mp4",
-              "base64": encoded
+              "base64": base64.b64encode(video_data).decode("ascii")
           }
-
-          body = json.dumps(payload).encode("utf-8")
-
-          print("Sending video to ACURIVO HUB...")
 
           request = urllib.request.Request(
               endpoint,
-              data=body,
+              data=json.dumps(payload).encode("utf-8"),
               headers={
                   "Content-Type": "application/json"
               },
               method="POST"
           )
 
-          with urllib.request.urlopen(request, timeout=300) as response:
+          print("SENDING VIDEO TO ACURIVO HUB...")
+
+          with urllib.request.urlopen(
+              request,
+              timeout=300
+          ) as response:
+
               result = response.read().decode("utf-8")
+
               print("ACURIVO HUB RESPONSE:")
               print(result)
+
+              if '"success":true' not in result.replace(" ", ""):
+                  raise RuntimeError(
+                      "ACURIVO HUB did not confirm successful upload."
+                  )
+
+          print("YOUTUBE UPLOAD CONFIRMED.")
 
           PY
 
